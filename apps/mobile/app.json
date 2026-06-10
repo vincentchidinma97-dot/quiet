@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Vault",
+    "slug": "vault-mobile",
+    "scheme": "quiet",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.vault.mobile"
+    },
+    "android": {
+      "package": "com.vault.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0a"
+      }
+    },
+    "plugins": [
+      [
+        "expo-secure-store"
+      ],
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "422b19e4-560b-4cc7-bd0e-899bee3b9b69"
+      }
+    }
+  }
+}

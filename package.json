@@ -1,0 +1,27 @@
+{
+  "name": "vault-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/mobile",
+    "apps/api",
+    "packages/shared",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "mobile": "yarn workspace @vault/mobile start",
+    "api": "yarn workspace @vault/api dev",
+    "test": "yarn workspaces run test",
+    "lint": "yarn workspaces run lint"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {}
+}
