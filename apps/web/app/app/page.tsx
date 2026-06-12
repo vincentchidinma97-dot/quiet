@@ -3,13 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
-import { QRCodeSVG as QRCodeSVGBase } from 'qrcode.react'
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const QRCodeSVG = QRCodeSVGBase as any
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { SendModal } from '@/components/SendModal'
+import { SettingsPanel } from '@/components/SettingsPanel'
 import { sendEth, sendToken, estimateTxFee } from '@/lib/blockchain'
-import { TOKENS } from '@/lib/tokens'
 import type { Token } from '@/lib/tokens'
 import { useTokenBalances } from '@/lib/hooks/useTokenBalances'
 import { useXmtp } from '@/lib/hooks/useXmtp'
@@ -71,8 +68,6 @@ export default function AppPage() {
   const { xmtpClient, isInitializing, error: xmtpError } = useXmtp()
 
   // ── Wallet state
-  const [copied, setCopied] = useState(false)
-  const [showQR, setShowQR] = useState(false)
   const [showSend, setShowSend] = useState(false)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -326,14 +321,6 @@ export default function AppPage() {
       amount,
       token.decimals,
     )
-  }
-
-  function copyAddress() {
-    if (!address) return
-    navigator.clipboard.writeText(address).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1400)
-    })
   }
 
   async function handleLogout() {
@@ -625,105 +612,15 @@ export default function AppPage() {
         )}
       </main>
 
-      {/* ── Right panel ────────────────────────────────── */}
+      {/* ── Right panel (settings) ───────────────────────── */}
       <aside className={styles.panel}>
-        <div className={styles.panelInner}>
-          <h2 className={styles.panelTitle}>your wallet</h2>
-
-          {address ? (
-            <>
-              <div className={styles.addrCard}>
-                <p className={styles.addrLabel}>address</p>
-                <div className={styles.addrRow}>
-                  <span className={styles.addrValue}>
-                    {truncateAddress(address)}
-                  </span>
-                  <button
-                    className={`${styles.copyBtn} ${copied ? styles.copyBtnCopied : ''}`}
-                    onClick={copyAddress}
-                  >
-                    {copied ? '✓ copied' : '⎘ copy'}
-                  </button>
-                </div>
-              </div>
-
-              <div className={styles.assetsList}>
-                <p className={styles.assetsLabel}>assets</p>
-                {tokenBalances.map(({ token, balance }) => {
-                  const isZero = !balance || parseFloat(balance) === 0
-                  return (
-                    <div
-                      key={token.symbol}
-                      className={`${styles.assetItem} ${isZero ? styles.assetItemMuted : ''}`}
-                    >
-                      <div
-                        className={styles.assetIcon}
-                        style={{ background: token.iconColor + '22', color: token.iconColor }}
-                      >
-                        {token.iconLetters}
-                      </div>
-                      <div className={styles.assetMeta}>
-                        <span className={styles.assetSymbol}>{token.symbol}</span>
-                        <span className={styles.assetName}>{token.name}</span>
-                      </div>
-                      <span className={styles.assetBalance}>{balance ?? '—'}</span>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className={styles.actionRow}>
-                <button
-                  className={styles.receiveBtn}
-                  onClick={() => setShowQR((v) => !v)}
-                >
-                  {showQR ? 'hide' : 'receive'}
-                </button>
-                <button
-                  className={styles.sendBtn}
-                  onClick={() => setShowSend(true)}
-                >
-                  send
-                </button>
-              </div>
-
-              {showQR && (
-                <div className={styles.qrWrap}>
-                  <p className={styles.qrAcceptsLabel}>this address accepts</p>
-                  <div className={styles.qrTokenBadges}>
-                    {TOKENS.map((token) => (
-                      <div
-                        key={token.symbol}
-                        className={styles.qrTokenBadge}
-                        style={{ background: token.iconColor + '22', color: token.iconColor }}
-                      >
-                        <span className={styles.qrBadgeIcon}>{token.iconLetters}</span>
-                        <span className={styles.qrBadgeSymbol}>{token.symbol}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <QRCodeSVG
-                    value={address}
-                    size={160}
-                    bgColor="transparent"
-                    fgColor="var(--text)"
-                    level="M"
-                  />
-                  <p className={styles.qrAddress}>{address}</p>
-                  <p className={styles.qrNetworkNote}>
-                    all on ethereum sepolia — sending other networks here will result in loss of funds
-                  </p>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className={styles.noWallet}>no wallet linked</p>
-          )}
-
-          <button className={styles.logoutBtn} onClick={handleLogout}>
-            log out
-          </button>
-        </div>
+        <SettingsPanel
+          address={address}
+          tokenBalances={tokenBalances}
+          user={user}
+          onShowSend={() => setShowSend(true)}
+          onLogout={handleLogout}
+        />
       </aside>
     </div>
 
