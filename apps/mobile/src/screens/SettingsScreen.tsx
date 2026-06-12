@@ -1,7 +1,7 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  SafeAreaView, ScrollView,
+  SafeAreaView, ScrollView, Clipboard,
 } from 'react-native'
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs'
 import type { MainTabParamList } from '../navigation/types'
@@ -9,6 +9,7 @@ import { Typography, Spacing, Radius, BorderWidth } from '../theme'
 import type { ThemeColors, ThemeMode } from '../theme'
 import { paperColors, eclipseColors } from '../theme/colors'
 import { useTheme } from '../hooks/useTheme'
+import { useWalletStore } from '../store/walletStore'
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Settings'>
 
@@ -137,16 +138,60 @@ function InfoRow({ label, value, colors }: { label: string; value: string; color
   )
 }
 
+// ── Copyable wallet address row ───────────────────────────────────────────────
+function WalletAddressRow({ address, colors }: { address: string; colors: ThemeColors }) {
+  const [copied, setCopied] = useState(false)
+  const [pressed, setPressed] = useState(false)
+
+  function handleCopy() {
+    Clipboard.setString(address)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1200)
+  }
+
+  const shortAddr = address.startsWith('privy:')
+    ? address
+    : `${address.slice(0, 6)}…${address.slice(-4)}`
+
+  return (
+    <View style={[row.root, { borderBottomColor: colors.border }]}>
+      <Text style={[row.label, { color: colors.textSecondary }]}>wallet</Text>
+      <TouchableOpacity
+        onPress={handleCopy}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        activeOpacity={1}
+        style={row.copyBtn}
+        hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+      >
+        <Text style={[
+          row.value,
+          { color: copied ? colors.accent : pressed ? colors.accent : colors.textTertiary },
+        ]}>
+          {copied ? 'copied!' : shortAddr}
+        </Text>
+        <Text style={[row.copyIcon, { color: copied ? colors.accent : colors.textTertiary }]}>
+          {copied ? '✓' : '⎘'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  )
+}
+
 const row = StyleSheet.create({
-  root:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing['3'], borderBottomWidth: BorderWidth.hairline },
-  label: { fontFamily: Typography.sans, fontSize: Typography.size.sm },
-  value: { fontFamily: Typography.mono, fontSize: Typography.size.xs },
+  root:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing['3'], borderBottomWidth: BorderWidth.hairline },
+  label:    { fontFamily: Typography.sans, fontSize: Typography.size.sm },
+  value:    { fontFamily: Typography.mono, fontSize: Typography.size.xs },
+  copyBtn:  { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  copyIcon: { fontFamily: Typography.mono, fontSize: 13 },
 })
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 export function SettingsScreen(_props: Props) {
   const { colors, mode, setMode } = useTheme()
   const styles = getStyles(colors)
+  const identity = useWalletStore((s) => s.identity)
+  const walletAddress = identity?.address ?? ''
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -184,9 +229,9 @@ export function SettingsScreen(_props: Props) {
         {/* ── Account ──────────────────────────────────────────────────────── */}
         <Section title="account" colors={colors}>
           <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <InfoRow label="wallet"     value="0x4f3c…b6e"        colors={colors} />
-            <InfoRow label="network"    value="Ethereum mainnet"   colors={colors} />
-            <InfoRow label="encryption" value="ECDH · on-device"   colors={colors} />
+            <WalletAddressRow address={walletAddress} colors={colors} />
+            <InfoRow label="network"    value="Ethereum Sepolia"  colors={colors} />
+            <InfoRow label="encryption" value="ECDH · on-device"  colors={colors} />
           </View>
         </Section>
 

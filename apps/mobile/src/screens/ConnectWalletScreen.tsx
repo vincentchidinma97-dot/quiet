@@ -1,297 +1,293 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, Alert, SafeAreaView, ScrollView, Linking,
+  ActivityIndicator, Alert, SafeAreaView, ScrollView,
+  TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native'
-import { ethers } from 'ethers'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../navigation/types'
 import { Typography, Spacing, Radius, BorderWidth } from '../theme'
 import type { ThemeColors } from '../theme'
 import { useWalletStore } from '../store/walletStore'
-import { deriveVaultKeypair, VAULT_SIGN_MESSAGE } from '@vault/shared'
 import { useHaptic } from '../hooks/useHaptic'
 import { useTheme } from '../hooks/useTheme'
 import {
-  WalletConnectModal,
-  useWalletConnectModal,
-  type IProvider,
-} from '@walletconnect/modal-react-native'
-import {
-  WC_PROJECT_ID,
-  WC_METADATA,
-  WC_SESSION_PARAMS,
-  METAMASK_WALLET_ID,
-  COINBASE_WALLET_ID,
-  PHANTOM_WALLET_ID,
-} from '../services/walletConfig'
+  usePrivy,
+  useLoginWithOAuth,
+  useLoginWithEmail,
+} from '@privy-io/expo'
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ConnectWallet'>
 
-type WalletOption = {
-  id:     string
-  name:   string
-  desc:   string
-  color:  string
-  initial: string
-}
-
-const WALLET_TO_WC_ID: Record<string, string | undefined> = {
-  metamask:      METAMASK_WALLET_ID,
-  coinbase:      COINBASE_WALLET_ID,
-  phantom:       PHANTOM_WALLET_ID,
-  walletconnect: undefined,
-}
-
-const WALLET_OPTIONS: WalletOption[] = [
-  { id: 'metamask',      name: 'MetaMask',        desc: 'browser extension · mobile',   color: '#f6851b', initial: 'M' },
-  { id: 'walletconnect', name: 'WalletConnect',   desc: 'any wallet · QR code',         color: '#3b99fc', initial: 'W' },
-  { id: 'phantom',       name: 'Phantom',         desc: 'Solana · browser · mobile',    color: '#9945ff', initial: 'P' },
-  { id: 'coinbase',      name: 'Coinbase Wallet', desc: 'self-custody · easy backup',   color: '#0052ff', initial: 'C' },
-]
+type LoginTab = 'social' | 'email'
 
 export function ConnectWalletScreen({ navigation }: Props) {
   const haptic = useHaptic()
   const { colors } = useTheme()
   const styles = getStyles(colors)
-  const [selectedWallet, setSelectedWallet] = useState<string>('metamask')
-  const { setIdentity, setKeypair, setConnecting, setConnectionError, isConnecting } =
-    useWalletStore()
 
-  const { open, isOpen, isConnected, address, provider } = useWalletConnectModal()
+  const [activeTab, setActiveTab] = useState<LoginTab>('social')
+  const [email, setEmail]         = useState('')
+  const [otpCode, setOtpCode]     = useState('')
+  const [otpSent, setOtpSent]     = useState(false)
+  const [loading, setLoading]     = useState(false)
 
-  const flowActiveRef = useRef(false)
-  const hasOpenedRef  = useRef(false)
-  const timeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { user, isReady } = usePrivy()
+  const { setIdentity }   = useWalletStore()
 
-  function clearConnectionTimeout() {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-      timeoutRef.current = null
-    }
-  }
-
-  // Track when modal becomes visible
+  // Navigate to Main once Privy has a user
   useEffect(() => {
-    if (isOpen) {
-      console.log('[WC] WalletConnect modal opened')
-      hasOpenedRef.current = true
-    }
-  }, [isOpen])
-
-  // Deep-link return: when MetaMask approves it redirects back via quiet://
-  // Linking fires an event — we just need to let WC's internal session handler
-  // pick it up. But we log it so we can see if the return ever arrives.
-  useEffect(() => {
-    const sub = Linking.addEventListener('url', ({ url }) => {
-      console.log('[WC] App reopened via deep link:', url)
-    })
-    return () => sub.remove()
-  }, [])
-
-  // Modal closed without connecting
-  useEffect(() => {
-    if (flowActiveRef.current && hasOpenedRef.current && !isOpen && !isConnected) {
-      console.log('[WC] Modal dismissed without connecting')
-      clearConnectionTimeout()
-      flowActiveRef.current = false
-      hasOpenedRef.current  = false
-      setConnecting(false)
-      Alert.alert('Cancelled', 'Wallet connection was cancelled.', [{ text: 'OK' }])
-    }
-  }, [isOpen, isConnected])
-
-  // Successful connection
-  useEffect(() => {
-    if (flowActiveRef.current && isConnected && address && provider) {
-      console.log('[WC] Wallet connected:', address)
-      clearConnectionTimeout()
-      flowActiveRef.current = false
-      proceedWithSign(address, provider)
-    }
-  }, [isConnected, address, provider])
-
-  function handleConnect() {
-    if (isConnecting) return
-    console.log('[WC] handleConnect called, selectedWallet:', selectedWallet)
-    setConnecting(true)
-    setConnectionError(null)
-    flowActiveRef.current = true
-    hasOpenedRef.current  = false
-
-    // 30-second safety timeout
-    timeoutRef.current = setTimeout(() => {
-      if (flowActiveRef.current) {
-        console.log('[WC] Connection timed out after 30s')
-        flowActiveRef.current = false
-        hasOpenedRef.current  = false
-        setConnecting(false)
-        Alert.alert(
-          'Connection timed out',
-          'MetaMask did not respond in time. Make sure MetaMask is installed and try again.',
-          [{ text: 'OK' }],
-        )
-      }
-    }, 30_000)
-
-    open({ route: 'ConnectWallet' })
-  }
-
-  async function proceedWithSign(walletAddress: string, wcProvider: IProvider) {
-    try {
-      console.log('[WC] Requesting personal_sign for', walletAddress)
-      const msgHex = ethers.hexlify(ethers.toUtf8Bytes(VAULT_SIGN_MESSAGE(walletAddress)))
-
-      const sig = await wcProvider.request(
-        { method: 'personal_sign', params: [msgHex, walletAddress] },
-        'eip155:11155111',
-      ) as string
-
-      console.log('[WC] Signature received, deriving keypair')
-      const keypair = await deriveVaultKeypair(walletAddress, async () => sig)
-
+    if (isReady && user) {
+      const walletAccount = user.linked_accounts?.find((a: any) => a.type === 'wallet') as any
+      const address = (walletAccount?.address as string) ?? ''
       setIdentity({
-        address:       walletAddress,
+        address:       address || `privy:${user.id}`,
         chainId:       11155111,
-        ecdhPublicKey: keypair.publicKey,
+        ecdhPublicKey: '',
         connectedAt:   Date.now(),
       })
-      setKeypair(keypair)
       navigation.replace('Main')
+    }
+  }, [isReady, user])
 
+  // OAuth: Apple / Google
+  const { login: loginWithOAuth, state: oauthState } = useLoginWithOAuth({
+    onSuccess: () => {
+      console.log('[Privy] OAuth success')
+    },
+    onError: (err: any) => {
+      console.error('[Privy] OAuth error:', err)
+      setLoading(false)
+      Alert.alert('Login failed', err?.message ?? 'OAuth login failed. Please try again.', [{ text: 'OK' }])
+    },
+  })
+
+  // Email OTP
+  const {
+    sendCode,
+    loginWithCode,
+    state: emailState,
+  } = useLoginWithEmail({
+    onSendCodeSuccess: () => {
+      console.log('[Privy] OTP sent')
+      setOtpSent(true)
+      setLoading(false)
+    },
+    onLoginSuccess: () => {
+      console.log('[Privy] Email login success')
+    },
+    onError: (err: any) => {
+      console.error('[Privy] Email error:', err)
+      setLoading(false)
+      Alert.alert('Login failed', err?.message ?? 'Email login failed. Please try again.', [{ text: 'OK' }])
+    },
+  })
+
+  async function handleOAuth(provider: 'apple' | 'google') {
+    try {
+      haptic.heavy()
+      setLoading(true)
+      await loginWithOAuth({ provider })
     } catch (err: any) {
-      const msg       = (err?.message ?? '') as string
-      console.log('[WC] proceedWithSign error:', err?.code, msg)
-      const isReject  = err?.code === 4001 || msg.toLowerCase().includes('reject')
-      const isTimeout = msg.toLowerCase().includes('timeout')
-      const noApp     = msg.toLowerCase().includes('no metamask') ||
-                        msg.toLowerCase().includes('not installed')
-
-      setConnectionError(msg || 'Unknown error')
-      setConnecting(false)
-
-      Alert.alert(
-        isReject  ? 'Signature rejected'
-        : isTimeout ? 'Connection timed out'
-        : noApp     ? 'MetaMask not found'
-        : 'Connection failed',
-
-        isReject  ? 'You rejected the signature request in MetaMask. Tap the button to try again.'
-        : isTimeout ? 'MetaMask did not respond in time. Make sure it is open and try again.'
-        : noApp     ? 'MetaMask does not appear to be installed on this device.'
-        : 'Could not connect to your wallet. Please try again.',
-
-        [{ text: 'OK' }],
-      )
-    } finally {
-      setConnecting(false)
+      console.error('[Privy] OAuth exception:', err)
+      setLoading(false)
+      Alert.alert('Login failed', err?.message ?? 'Could not start login. Please try again.', [{ text: 'OK' }])
     }
   }
 
+  async function handleSendCode() {
+    if (!email.trim()) {
+      Alert.alert('Enter your email', 'Please enter an email address first.', [{ text: 'OK' }])
+      return
+    }
+    try {
+      haptic.medium()
+      setLoading(true)
+      await sendCode({ email: email.trim() })
+    } catch (err: any) {
+      console.error('[Privy] sendCode exception:', err)
+      setLoading(false)
+      Alert.alert('Failed to send code', err?.message ?? 'Could not send code. Please try again.', [{ text: 'OK' }])
+    }
+  }
+
+  async function handleVerifyCode() {
+    if (!otpCode.trim()) {
+      Alert.alert('Enter the code', 'Please enter the 6-digit code from your email.', [{ text: 'OK' }])
+      return
+    }
+    try {
+      haptic.medium()
+      setLoading(true)
+      await loginWithCode({ code: otpCode.trim() })
+    } catch (err: any) {
+      console.error('[Privy] loginWithCode exception:', err)
+      setLoading(false)
+      Alert.alert('Invalid code', err?.message ?? 'The code was incorrect. Please try again.', [{ text: 'OK' }])
+    }
+  }
+
+  const isBusy = loading || oauthState.status === 'loading' || emailState.status === 'sending-code' || emailState.status === 'submitting-code'
+
   return (
-    <>
-      {/* WalletConnectModal initialises the WC client and renders the picker sheet.
-          It uses global Valtio state so it does not need to wrap children. */}
-      <WalletConnectModal
-        projectId={WC_PROJECT_ID}
-        providerMetadata={WC_METADATA}
-        sessionParams={WC_SESSION_PARAMS}
-        explorerRecommendedWalletIds={
-          WALLET_TO_WC_ID[selectedWallet]
-            ? [WALLET_TO_WC_ID[selectedWallet]!]
-            : undefined
-        }
-      />
-      <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-        <TouchableOpacity style={styles.backBtn} onPress={() => { haptic.light(); navigation.goBack() }}>
-          <Text style={styles.backText}>← back</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.backBtn} onPress={() => { haptic.light(); navigation.goBack() }}>
+            <Text style={styles.backText}>← back</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.title}>choose your wallet</Text>
-        <Text style={styles.subtitle}>
-          sign once to generate your encrypted identity.{'\n'}
-          quiet never stores your keys.
-        </Text>
+          <Text style={styles.title}>sign in to quiet</Text>
+          <Text style={styles.subtitle}>
+            your encrypted identity is derived from your account.{'\n'}
+            quiet never stores your keys.
+          </Text>
 
-        <View style={styles.walletList}>
-          {WALLET_OPTIONS.map((wallet) => {
-            const isSelected = selectedWallet === wallet.id
-            return (
+          {/* Tabs */}
+          <View style={styles.tabs}>
+            {(['social', 'email'] as LoginTab[]).map((tab) => (
               <TouchableOpacity
-                key={wallet.id}
-                style={[styles.walletRow, isSelected && styles.walletRowSelected]}
-                onPress={() => { haptic.light(); setSelectedWallet(wallet.id) }}
-                activeOpacity={0.8}
+                key={tab}
+                style={[styles.tab, activeTab === tab && styles.tabActive]}
+                onPress={() => { haptic.light(); setActiveTab(tab) }}
               >
-                <View style={[styles.walletIcon, { backgroundColor: wallet.color + '22' }]}>
-                  <Text style={[styles.walletInitial, { color: wallet.color }]}>
-                    {wallet.initial}
-                  </Text>
-                </View>
+                <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                  {tab === 'social' ? 'Apple / Google' : 'Email'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-                <View style={styles.walletInfo}>
-                  <Text style={styles.walletName}>{wallet.name}</Text>
-                  <Text style={styles.walletDesc}>{wallet.desc}</Text>
-                </View>
-
-                {isSelected ? (
-                  <Text style={styles.checkmark}>✓</Text>
+          {activeTab === 'social' ? (
+            <View style={styles.socialButtons}>
+              {/* Apple */}
+              <TouchableOpacity
+                style={[styles.socialBtn, isBusy && styles.btnDisabled]}
+                onPress={() => handleOAuth('apple')}
+                disabled={isBusy}
+                activeOpacity={0.85}
+              >
+                {isBusy ? (
+                  <ActivityIndicator color={colors.textPrimary} size="small" />
                 ) : (
-                  <Text style={styles.chevron}>›</Text>
+                  <>
+                    <Text style={styles.socialBtnIcon}></Text>
+                    <Text style={styles.socialBtnText}>Continue with Apple</Text>
+                  </>
                 )}
               </TouchableOpacity>
-            )
-          })}
-        </View>
 
-        <View style={styles.dotDivider}>
-          {['·', '·', '·'].map((d, i) => (
-            <Text key={i} style={styles.dot}>{d}</Text>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.signBtn, isConnecting && styles.signBtnDisabled]}
-          onPress={() => { haptic.heavy(); handleConnect() }}
-          disabled={isConnecting}
-          activeOpacity={0.85}
-        >
-          {isConnecting ? (
-            <ActivityIndicator color={colors.accent} size="small" />
-          ) : (
-            <Text style={styles.signBtnText}>sign message & enter quiet</Text>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.encNote}>
-          <Text style={styles.lockIcon}>🔒</Text>
-          <Text style={styles.encText}>
-            ECDH keypair generated client-side · never transmitted
-          </Text>
-        </View>
-
-        <View style={styles.explainer}>
-          <Text style={styles.explainerTitle}>what happens when you sign</Text>
-          {[
-            'Your wallet signs a fixed message (no funds moved)',
-            'We hash the signature to derive an encryption keypair',
-            'Your keypair is stored on-device only — never on our servers',
-            'You can recover it on any device by signing again',
-          ].map((step, i) => (
-            <View key={i} style={styles.explainerRow}>
-              <View style={styles.explainerNum}>
-                <Text style={styles.explainerNumText}>{i + 1}</Text>
-              </View>
-              <Text style={styles.explainerStep}>{step}</Text>
+              {/* Google */}
+              <TouchableOpacity
+                style={[styles.socialBtn, isBusy && styles.btnDisabled]}
+                onPress={() => handleOAuth('google')}
+                disabled={isBusy}
+                activeOpacity={0.85}
+              >
+                {isBusy ? (
+                  <ActivityIndicator color={colors.textPrimary} size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.socialBtnIcon}>G</Text>
+                    <Text style={styles.socialBtnText}>Continue with Google</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
-          ))}
-        </View>
+          ) : (
+            <View style={styles.emailForm}>
+              {!otpSent ? (
+                <>
+                  <TextInput
+                    style={styles.input}
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="you@example.com"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!isBusy}
+                  />
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, isBusy && styles.btnDisabled]}
+                    onPress={handleSendCode}
+                    disabled={isBusy}
+                    activeOpacity={0.85}
+                  >
+                    {isBusy ? (
+                      <ActivityIndicator color={colors.bg} size="small" />
+                    ) : (
+                      <Text style={styles.primaryBtnText}>send code</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.otpHint}>
+                    Enter the 6-digit code sent to {email}
+                  </Text>
+                  <TextInput
+                    style={[styles.input, styles.otpInput]}
+                    value={otpCode}
+                    onChangeText={setOtpCode}
+                    placeholder="000000"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    editable={!isBusy}
+                  />
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, isBusy && styles.btnDisabled]}
+                    onPress={handleVerifyCode}
+                    disabled={isBusy}
+                    activeOpacity={0.85}
+                  >
+                    {isBusy ? (
+                      <ActivityIndicator color={colors.bg} size="small" />
+                    ) : (
+                      <Text style={styles.primaryBtnText}>verify & enter quiet</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.resendBtn}
+                    onPress={() => { setOtpSent(false); setOtpCode('') }}
+                  >
+                    <Text style={styles.resendText}>← use a different email</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )}
 
-      </ScrollView>
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.walletBtn}
+            onPress={() => Alert.alert('WalletConnect', 'WalletConnect requires a native build. Use Apple, Google, or Email to sign in with Expo Go.', [{ text: 'OK' }])}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.walletBtnText}>connect wallet (native build only)</Text>
+          </TouchableOpacity>
+
+          <View style={styles.encNote}>
+            <Text style={styles.lockIcon}>🔒</Text>
+            <Text style={styles.encText}>
+              ECDH keypair generated client-side · never transmitted
+            </Text>
+          </View>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
-    </>
   )
 }
 
@@ -328,94 +324,145 @@ function getStyles(colors: ThemeColors) {
       lineHeight:   Typography.size.sm * Typography.leading.loose,
       marginBottom: Spacing['6'],
     },
-    walletList: {
-      gap:          Spacing['3'],
-      marginBottom: Spacing['4'],
+    tabs: {
+      flexDirection:   'row',
+      backgroundColor: colors.surface,
+      borderRadius:    Radius.lg,
+      borderWidth:     BorderWidth.hairline,
+      borderColor:     colors.border,
+      padding:         3,
+      marginBottom:    Spacing['5'],
+      gap:             3,
     },
-    walletRow: {
+    tab: {
+      flex:            1,
+      paddingVertical: Spacing['2'],
+      alignItems:      'center',
+      borderRadius:    Radius.md,
+    },
+    tabActive: {
+      backgroundColor: colors.accentSoft,
+    },
+    tabText: {
+      fontFamily: Typography.mono,
+      fontSize:   Typography.size.xs,
+      color:      colors.textTertiary,
+    },
+    tabTextActive: {
+      color: colors.accent,
+    },
+    socialButtons: {
+      gap: Spacing['3'],
+    },
+    socialBtn: {
       flexDirection:   'row',
       alignItems:      'center',
+      justifyContent:  'center',
       gap:             Spacing['3'],
       backgroundColor: colors.surface,
       borderRadius:    Radius.lg,
       borderWidth:     BorderWidth.hairline,
       borderColor:     colors.border,
-      padding:         Spacing['4'],
+      paddingVertical: Spacing['4'],
     },
-    walletRowSelected: {
-      borderColor:     colors.border,
-      backgroundColor: colors.accentSoft,
-    },
-    walletIcon: {
-      width:          36,
-      height:         36,
-      borderRadius:   Radius.md,
-      alignItems:     'center',
-      justifyContent: 'center',
-    },
-    walletInitial: {
-      fontFamily: Typography.mono,
-      fontSize:   Typography.size.md,
+    socialBtnIcon: {
+      fontFamily: Typography.sans,
+      fontSize:   Typography.size.base,
       fontWeight: Typography.weight.bold,
+      color:      colors.textPrimary,
+      width:      20,
+      textAlign:  'center',
     },
-    walletInfo: {
-      flex: 1,
+    socialBtnText: {
+      fontFamily: Typography.sans,
+      fontSize:   Typography.size.base,
+      color:      colors.textPrimary,
     },
-    walletName: {
-      fontFamily:   Typography.sans,
-      fontSize:     Typography.size.base,
-      fontWeight:   Typography.weight.medium,
-      color:        colors.textPrimary,
-      marginBottom: 2,
+    emailForm: {
+      gap: Spacing['3'],
     },
-    walletDesc: {
+    input: {
+      backgroundColor:   colors.surface,
+      borderRadius:      Radius.lg,
+      borderWidth:       BorderWidth.hairline,
+      borderColor:       colors.border,
+      paddingHorizontal: Spacing['4'],
+      paddingVertical:   Spacing['3'],
+      fontFamily:        Typography.mono,
+      fontSize:          Typography.size.base,
+      color:             colors.textPrimary,
+    },
+    otpInput: {
+      textAlign:     'center',
+      fontSize:      Typography.size.xl,
+      letterSpacing: 8,
+    },
+    otpHint: {
       fontFamily: Typography.mono,
       fontSize:   Typography.size.xs,
-      color:      colors.textSecondary,
+      color:      colors.textTertiary,
+      textAlign:  'center',
     },
-    checkmark: {
-      fontSize:   16,
-      color:      colors.accent,
-      fontWeight: Typography.weight.bold,
+    primaryBtn: {
+      backgroundColor: colors.accent,
+      borderRadius:    Radius.lg,
+      paddingVertical: Spacing['4'] - 1,
+      alignItems:      'center',
     },
-    chevron: {
-      fontSize: 20,
-      color:    colors.textTertiary,
+    primaryBtnText: {
+      fontFamily:    Typography.sans,
+      fontSize:      Typography.size.base,
+      fontWeight:    Typography.weight.medium,
+      color:         colors.bg,
+      letterSpacing: Typography.tracking.wide,
     },
-    dotDivider: {
+    btnDisabled: {
+      opacity: 0.6,
+    },
+    resendBtn: {
+      alignItems: 'center',
+      paddingVertical: Spacing['2'],
+    },
+    resendText: {
+      fontFamily: Typography.mono,
+      fontSize:   Typography.size.xs,
+      color:      colors.textTertiary,
+    },
+    dividerRow: {
       flexDirection:  'row',
-      justifyContent: 'center',
-      gap:            Spacing['2'],
-      marginVertical: Spacing['2'],
+      alignItems:     'center',
+      gap:            Spacing['3'],
+      marginVertical: Spacing['5'],
     },
-    dot: {
-      color:    colors.textTertiary,
-      fontSize: Typography.size.base,
+    dividerLine: {
+      flex:            1,
+      height:          BorderWidth.hairline,
+      backgroundColor: colors.border,
     },
-    signBtn: {
-      backgroundColor: colors.accentSoft,
+    dividerText: {
+      fontFamily: Typography.mono,
+      fontSize:   Typography.size.xs,
+      color:      colors.textTertiary,
+    },
+    walletBtn: {
+      alignItems:      'center',
+      backgroundColor: colors.surface,
       borderRadius:    Radius.lg,
       borderWidth:     BorderWidth.hairline,
       borderColor:     colors.border,
-      paddingVertical: Spacing['4'] - 1,
-      alignItems:      'center',
-      marginBottom:    Spacing['3'],
+      paddingVertical: Spacing['3'],
+      marginBottom:    Spacing['5'],
     },
-    signBtnDisabled: {
-      opacity: 0.6,
-    },
-    signBtnText: {
-      fontFamily:    Typography.sans,
-      fontSize:      Typography.size.base,
-      color:         colors.accent,
-      letterSpacing: Typography.tracking.wide,
+    walletBtnText: {
+      fontFamily: Typography.mono,
+      fontSize:   Typography.size.xs,
+      color:      colors.textTertiary,
     },
     encNote: {
       flexDirection:  'row',
       alignItems:     'center',
       justifyContent: 'center',
       gap:            Spacing['2'],
-      marginBottom:   Spacing['8'],
     },
     lockIcon: {
       fontSize: 12,
@@ -425,51 +472,6 @@ function getStyles(colors: ThemeColors) {
       fontSize:      Typography.size.xs,
       color:         colors.textTertiary,
       letterSpacing: Typography.tracking.wide,
-    },
-    explainer: {
-      backgroundColor: colors.surfaceAlt,
-      borderRadius:    Radius.lg,
-      borderWidth:     BorderWidth.hairline,
-      borderColor:     colors.border,
-      padding:         Spacing['4'],
-      gap:             Spacing['3'],
-    },
-    explainerTitle: {
-      fontFamily:    Typography.mono,
-      fontSize:      Typography.size.xs,
-      color:         colors.textTertiary,
-      letterSpacing: Typography.tracking.widest,
-      textTransform: 'uppercase',
-      marginBottom:  Spacing['1'],
-    },
-    explainerRow: {
-      flexDirection: 'row',
-      alignItems:    'flex-start',
-      gap:           Spacing['3'],
-    },
-    explainerNum: {
-      width:           20,
-      height:          20,
-      borderRadius:    Radius.full,
-      backgroundColor: colors.surface,
-      borderWidth:     BorderWidth.hairline,
-      borderColor:     colors.border,
-      alignItems:      'center',
-      justifyContent:  'center',
-      flexShrink:      0,
-      marginTop:       1,
-    },
-    explainerNumText: {
-      fontFamily: Typography.mono,
-      fontSize:   Typography.size.xs,
-      color:      colors.textSecondary,
-    },
-    explainerStep: {
-      flex:       1,
-      fontFamily: Typography.sans,
-      fontSize:   Typography.size.sm,
-      color:      colors.textSecondary,
-      lineHeight: Typography.size.sm * Typography.leading.normal,
     },
   })
 }

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, useWindowDimensions, RefreshControl } from 'react-native'
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  SafeAreaView, useWindowDimensions, RefreshControl, ScrollView,
+} from 'react-native'
 import Animated, {
   useSharedValue, useAnimatedStyle, useAnimatedProps,
   withTiming, withDelay, Easing,
@@ -16,13 +19,8 @@ import { ShimmerRow } from '../components/Shimmer'
 
 type PortfolioProps = BottomTabScreenProps<MainTabParamList, 'Portfolio'>
 
-const MOCK_ASSETS = [
-  { symbol: 'ETH',  name: 'Ethereum',  balance: '2.40',  usd: 9216,  change: +5.2, bg: '#1a1308', fg: '#C9A96E' },
-  { symbol: 'USDC', name: 'USD Coin',  balance: '1,200', usd: 1200,  change: 0,    bg: '#0f1a2e', fg: '#60a5fa' },
-  { symbol: 'AAVE', name: 'Aave',      balance: '98.4',  usd: 11060, change: +8.4, bg: '#0f2a1a', fg: '#4ade80' },
-  { symbol: 'UNI',  name: 'Uniswap',   balance: '180',   usd: 1224,  change: -1.8, bg: '#1e0f2e', fg: '#a78bfa' },
-  { symbol: 'LINK', name: 'Chainlink', balance: '62',    usd: 1140,  change: +3.1, bg: '#1a1a0e', fg: '#EF9F27' },
-]
+const ETH_MOCK_PRICE_USD = 3840
+const ETH_MOCK_CHANGE_PCT = +5.2
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 const AnimatedPath = Animated.createAnimatedComponent(Path)
@@ -55,7 +53,6 @@ function PortfolioSparkline() {
   )
 }
 
-// ── Counting header numbers ───────────────────────────────────────────────────
 function PortfolioValueCountUp({ target }: { target: number }) {
   const { colors } = useTheme()
   const styles = getStyles(colors)
@@ -77,38 +74,21 @@ function PortfolioValueCountUp({ target }: { target: number }) {
   return <Text style={styles.portValue}>${displayed.toLocaleString()}</Text>
 }
 
-function DailyChangeCountUp() {
-  const { colors } = useTheme()
-  const styles = getStyles(colors)
-  const [displayed, setDisplayed] = useState(0)
-
-  useEffect(() => {
-    let raf: ReturnType<typeof setTimeout>
-    const start = Date.now()
-    function tick() {
-      const fraction = Math.min((Date.now() - start) / 1000, 1)
-      const eased = 1 - Math.pow(1 - fraction, 3)
-      setDisplayed(Math.round(eased * 1284))
-      if (fraction < 1) raf = setTimeout(tick, 16)
-    }
-    raf = setTimeout(tick, 0)
-    return () => clearTimeout(raf)
-  }, [])
-
-  return <Text style={styles.portChange}>+${displayed.toLocaleString()} today (+6.2%)</Text>
-}
-
-// ── Staggered asset row ───────────────────────────────────────────────────────
-function AnimatedAssetRow({ item, index }: { item: typeof MOCK_ASSETS[0]; index: number }) {
+function AnimatedEthRow({
+  balance,
+  usd,
+}: {
+  balance: string
+  usd: number
+}) {
   const { colors } = useTheme()
   const styles = getStyles(colors)
   const opacity    = useSharedValue(0)
   const translateY = useSharedValue(8)
 
   useEffect(() => {
-    const delay = index * 60
-    opacity.value    = withDelay(delay, withTiming(1, { duration: 280, easing: Easing.out(Easing.ease) }))
-    translateY.value = withDelay(delay, withTiming(0, { duration: 280, easing: Easing.out(Easing.ease) }))
+    opacity.value    = withDelay(0, withTiming(1, { duration: 280, easing: Easing.out(Easing.ease) }))
+    translateY.value = withDelay(0, withTiming(0, { duration: 280, easing: Easing.out(Easing.ease) }))
   }, [])
 
   const animStyle = useAnimatedStyle(() => ({
@@ -119,21 +99,17 @@ function AnimatedAssetRow({ item, index }: { item: typeof MOCK_ASSETS[0]; index:
   return (
     <Animated.View style={animStyle}>
       <View style={styles.assetRow}>
-        <View style={[styles.assetIcon, { backgroundColor: item.bg }]}>
-          <Text style={[styles.assetIconText, { color: item.fg }]}>{item.symbol.slice(0, 3)}</Text>
+        <View style={[styles.assetIcon, { backgroundColor: '#1a1308' }]}>
+          <Text style={[styles.assetIconText, { color: '#C9A96E' }]}>ETH</Text>
         </View>
         <View style={styles.assetInfo}>
-          <Text style={styles.assetName}>{item.name}</Text>
-          <Text style={styles.assetBal}>{item.balance} {item.symbol}</Text>
+          <Text style={styles.assetName}>Ethereum</Text>
+          <Text style={styles.assetBal}>{balance} ETH</Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.assetUsd}>${item.usd.toLocaleString()}</Text>
-          <Text style={[styles.assetChange, {
-            color: item.change > 0 ? colors.success
-                 : item.change < 0 ? colors.danger
-                 : colors.textTertiary,
-          }]}>
-            {item.change > 0 ? '+' : ''}{item.change !== 0 ? `${item.change}%` : 'stable'}
+          <Text style={styles.assetUsd}>${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}</Text>
+          <Text style={[styles.assetChange, { color: colors.success }]}>
+            +{ETH_MOCK_CHANGE_PCT}%
           </Text>
         </View>
       </View>
@@ -146,21 +122,26 @@ export function PortfolioScreen({ navigation }: PortfolioProps) {
   const { colors } = useTheme()
   const styles = getStyles(colors)
 
-  const [loading, setLoading]       = useState(true)
+  const [shimmer, setShimmer]     = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const { balance: ethBalance, refresh: refreshBalance } = useWalletBalance()
-
-  const assets = MOCK_ASSETS.map((a) =>
-    a.symbol === 'ETH' && ethBalance != null
-      ? { ...a, balance: ethBalance }
-      : a,
-  )
-  const totalUsd = assets.reduce((s, a) => s + a.usd, 0)
+  const { balance: ethBalance, isLoading, refresh: refreshBalance } = useWalletBalance()
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(t)
-  }, [])
+    if (!isLoading && ethBalance !== null) {
+      setShimmer(false)
+    }
+    const fallback = setTimeout(() => setShimmer(false), 1500)
+    return () => clearTimeout(fallback)
+  }, [isLoading, ethBalance])
+
+  const ethNum  = parseFloat(ethBalance ?? '0') || 0
+  const ethUsd  = ethNum * ETH_MOCK_PRICE_USD
+  const totalUsd = ethUsd
+
+  const dailyChangeUsd = totalUsd * (ETH_MOCK_CHANGE_PCT / 100)
+  const dailyLabel = ethBalance != null
+    ? `+$${dailyChangeUsd.toFixed(2)} today (+${ETH_MOCK_CHANGE_PCT}%)`
+    : 'loading…'
 
   function onRefresh() {
     haptic.light()
@@ -170,43 +151,45 @@ export function PortfolioScreen({ navigation }: PortfolioProps) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.portHeader}>
-        <Text style={styles.portLabel}>portfolio value</Text>
-        <PortfolioValueCountUp target={totalUsd} />
-        <DailyChangeCountUp />
-        <PortfolioSparkline />
-      </View>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
+      >
+        <View style={styles.portHeader}>
+          <Text style={styles.portLabel}>portfolio value</Text>
+          <PortfolioValueCountUp target={Math.round(totalUsd)} />
+          <Text style={styles.portChange}>{dailyLabel}</Text>
+          <PortfolioSparkline />
+        </View>
 
-      <View style={styles.portActions}>
-        {[['➤','send'],['⬇','receive'],['⇄','swap'],['🔔','alerts']].map(([icon, label]) => (
-          <TouchableOpacity key={label} style={styles.portAction} onPress={() => haptic.medium()}>
-            <Text style={{ fontSize: 14, color: colors.textSecondary }}>{icon}</Text>
-            <Text style={styles.portActionLabel}>{label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {loading ? (
-        <View style={{ padding: Spacing['3'] }}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <React.Fragment key={i}>
-              <ShimmerRow variant="portfolio" />
-              {i < 4 && <View style={styles.separator} />}
-            </React.Fragment>
+        <View style={styles.portActions}>
+          {[['➤','send'],['⬇','receive'],['⇄','swap'],['🔔','alerts']].map(([icon, label]) => (
+            <TouchableOpacity key={label} style={styles.portAction} onPress={() => haptic.medium()}>
+              <Text style={{ fontSize: 14, color: colors.textSecondary }}>{icon}</Text>
+              <Text style={styles.portActionLabel}>{label}</Text>
+            </TouchableOpacity>
           ))}
         </View>
-      ) : (
-        <FlatList
-          data={assets}
-          keyExtractor={(a) => a.symbol}
-          renderItem={({ item, index }) => <AnimatedAssetRow item={item} index={index} />}
-          contentContainerStyle={{ padding: Spacing['3'] }}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-          }
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-        />
-      )}
+
+        <View style={{ padding: Spacing['3'] }}>
+          {shimmer ? (
+            <>
+              <ShimmerRow variant="portfolio" />
+              <View style={styles.separator} />
+              <ShimmerRow variant="portfolio" />
+            </>
+          ) : ethBalance != null ? (
+            <AnimatedEthRow balance={ethBalance} usd={ethUsd} />
+          ) : (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>no wallet connected</Text>
+              <Text style={styles.emptySubtext}>sign in to see your balance</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   )
 }
@@ -230,5 +213,8 @@ function getStyles(colors: ThemeColors) {
     assetUsd:        { fontFamily: Typography.mono, fontSize: Typography.size.base, fontWeight: Typography.weight.medium, color: colors.textPrimary },
     assetChange:     { fontFamily: Typography.mono, fontSize: Typography.size.sm, marginTop: 2 },
     separator:       { height: BorderWidth.hairline, backgroundColor: colors.border },
+    empty:           { alignItems: 'center', paddingTop: Spacing['10'], gap: Spacing['2'] },
+    emptyText:       { fontFamily: Typography.serif, fontSize: Typography.size.md, color: colors.textTertiary },
+    emptySubtext:    { fontFamily: Typography.mono, fontSize: Typography.size.xs, color: colors.textTertiary },
   })
 }

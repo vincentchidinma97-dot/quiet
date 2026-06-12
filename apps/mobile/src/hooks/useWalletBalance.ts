@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useWalletStore } from '../store/walletStore'
 import { getEthBalance } from '../services/blockchain'
 
@@ -8,20 +8,28 @@ export function useWalletBalance() {
   const address = useWalletStore((s) => s.identity?.address)
   const [balance, setBalance]     = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const addressRef = useRef(address)
+  addressRef.current = address
 
-  const refresh = useCallback(async () => {
-    if (!address) return
+  async function fetchBalance() {
+    const addr = addressRef.current
+    if (!addr) return
     setIsLoading(true)
     try {
-      const result = await getEthBalance(address as `0x${string}`)
+      const result = await getEthBalance(addr as `0x${string}`)
+      console.log(`[Balance] refreshed: ${result} ETH`)
       setBalance(result)
-    } catch {
-      // Silently keep previous value on network error
+    } catch (e) {
+      console.log('[Balance] fetch error:', e)
     } finally {
       setIsLoading(false)
     }
-  }, [address])
+  }
+
+  // Manual refresh exposed to consumers
+  async function refresh() {
+    await fetchBalance()
+  }
 
   useEffect(() => {
     if (!address) {
@@ -29,13 +37,15 @@ export function useWalletBalance() {
       return
     }
 
-    refresh()
+    fetchBalance()
 
-    timerRef.current = setInterval(refresh, POLL_INTERVAL_MS)
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [address, refresh])
+    const intervalId = setInterval(() => {
+      console.log('[Balance] 30s tick — fetching…')
+      fetchBalance()
+    }, POLL_INTERVAL_MS)
+
+    return () => clearInterval(intervalId)
+  }, [address])
 
   return { balance, isLoading, refresh }
 }

@@ -1,0 +1,52 @@
+/* paper (default) */
+:root,
+[data-theme="paper"] {
+  --bg:          #F7F5F0;
+  --card:        #FFFFFF;
+  --text:        #1A1D1A;
+  --text-muted:  rgba(26, 29, 26, 0.5);
+  --accent:      #2D5A45;
+  --accent-soft: rgba(62, 122, 94, 0.1);
+  --border:      rgba(26, 29, 26, 0.08);
+  --positive:    #2D5A45;
+  --negative:    #B5483D;
+}
+
+/* eclipse */
+[data-theme="eclipse"] {
+  --bg:          #101412;
+  --card:        rgba(232, 237, 232, 0.04);
+  --text:        #E8EDE8;
+  --text-muted:  rgba(232, 237, 232, 0.45);
+  --accent:      #7DBA8C;
+  --accent-soft: rgba(125, 186, 140, 0.1);
+  --border:      rgba(232, 237, 232, 0.07);
+  --positive:    #7DBA8C;
+  --negative:    #D97A6C;
+}
+
+/* white */
+[data-theme="white"] {
+  --bg:          #FFFFFF;
+  --card:        #FAFAFA;
+  --text:        #000000;
+  --text-muted:  rgba(0, 0, 0, 0.5);
+  --accent:      #2D5A45;
+  --accent-soft: rgba(45, 90, 69, 0.1);
+  --border:      rgba(0, 0, 0, 0.1);
+  --positive:    #2D5A45;
+  --negative:    #B5483D;
+}
+
+/* black */
+[data-theme="black"] {
+  --bg:          #000000;
+  --card:        rgba(255, 255, 255, 0.04);
+  --text:        #FFFFFF;
+  --text-muted:  rgba(255, 255, 255, 0.5);
+  --accent:      #7DBA8C;
+  --accent-soft: rgba(125, 186, 140, 0.1);
+  --border:      rgba(255, 255, 255, 0.08);
+  --positive:    #7DBA8C;
+  --negative:    #D97A6C;
+}

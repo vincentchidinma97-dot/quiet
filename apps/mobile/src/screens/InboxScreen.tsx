@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, SafeAreaView, StatusBar, RefreshControl,
@@ -8,22 +8,21 @@ import type { InboxStackParamList } from '../navigation/types'
 import { Typography, Spacing, Radius, BorderWidth } from '../theme'
 import type { ThemeColors } from '../theme'
 import { useWalletStore } from '../store/walletStore'
-import { useMessagesStore } from '../store/messagesStore'
 import { shortenAddress, generateAvatarColor } from '@vault/shared'
 import { useHaptic } from '../hooks/useHaptic'
 import { useTheme } from '../hooks/useTheme'
 import { useWalletBalance } from '../hooks/useWalletBalance'
+import { useXmtp } from '../hooks/useXmtp'
 import { ShimmerRow } from '../components/Shimmer'
 
 type Props = NativeStackScreenProps<InboxStackParamList, 'InboxList'>
 
-const MOCK_CONVERSATIONS = [
-  { address: '0x9fa2c8d1a3f4b7e2c1d8f6a9b3e4c7d2e1f8a9b3', preview: 'ser you saw the move on AAVE?', time: 'now', unread: 2 },
-  { address: '0xb71d4e8f3c2a9b1e7d4f6c8a3b2e1d9f7c4a8b6e', preview: 'still holding, conviction is real', time: '2h',  unread: 0 },
-  { address: '0xc3ae7f2b1d4e8c9a3f6b7d2e1c8a4f9b3e7d1c6a', preview: 'the new protocol just dropped',     time: '1d',  unread: 0 },
-  { address: '0xdd034f8b2c1a7e9d3f6b4c8a2e1d7f3b9c6a4e8d', preview: 'lfg. confirmed on-chain',           time: '3d',  unread: 0 },
-  { address: '0xe1bb9c4a2d8f6e3b1c7a4d9f2b6e8c3a1d7f4b9e', preview: 'that alpha aged well fr',           time: '5d',  unread: 0 },
-]
+interface ConvoItem {
+  address: string
+  preview: string
+  time:    string
+  unread:  number
+}
 
 type ActiveTab = 'messages' | 'rooms' | 'requests'
 
@@ -36,25 +35,65 @@ export function InboxScreen({ navigation }: Props) {
   const [refreshing, setRefreshing]   = useState(false)
   const [activeTab, setActiveTab]     = useState<ActiveTab>('messages')
   const [searchQuery, setSearchQuery] = useState('')
+  const [convos, setConvos]           = useState<ConvoItem[]>([])
+
   const identity = useWalletStore((s) => s.identity)
   const { balance: ethBalance } = useWalletBalance()
+  const { xmtpClient, isInitializing, error: xmtpError } = useXmtp()
+
+  const loadConversations = useCallback(async () => {
+    if (!xmtpClient) return
+    try {
+      const list = await xmtpClient.conversations.list()
+      const items: ConvoItem[] = await Promise.all(
+        list.map(async (convo) => {
+          const peerAddress = (convo as any).peerAddress ?? ''
+          let preview = ''
+          let time    = ''
+          try {
+            const msgs = await convo.messages({ limit: 1 })
+            if (msgs.length > 0) {
+              const last = msgs[msgs.length - 1]
+              preview = (typeof last.content === 'string' ? last.content : typeof last.content === 'function' ? '…' : JSON.stringify(last.content)) as string
+              const ts = typeof last.sent === 'number' ? last.sent : new Date(last.sent).getTime()
+              const diff = Date.now() - ts
+              if (diff < 60000)       time = 'now'
+              else if (diff < 3600000) time = `${Math.floor(diff / 60000)}m`
+              else if (diff < 86400000) time = `${Math.floor(diff / 3600000)}h`
+              else                    time = `${Math.floor(diff / 86400000)}d`
+            }
+          } catch { /* skip */ }
+          return { address: peerAddress, preview, time, unread: 0 }
+        })
+      )
+      setConvos(items.filter((c) => c.address))
+    } catch (err) {
+      console.error('[XMTP] list convos error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [xmtpClient])
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(t)
-  }, [])
+    if (xmtpClient) {
+      loadConversations()
+    } else if (!isInitializing) {
+      const t = setTimeout(() => setLoading(false), 800)
+      return () => clearTimeout(t)
+    }
+  }, [xmtpClient, isInitializing, loadConversations])
 
   function onRefresh() {
     haptic.light()
     setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 800)
+    loadConversations().finally(() => setRefreshing(false))
   }
 
-  const filtered = MOCK_CONVERSATIONS.filter((c) =>
+  const filtered = convos.filter((c) =>
     c.address.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
-  function ConversationRow({ item }: { item: typeof MOCK_CONVERSATIONS[0] }) {
+  function ConversationRow({ item }: { item: ConvoItem }) {
     const avatar = generateAvatarColor(item.address)
     return (
       <TouchableOpacity
@@ -101,7 +140,8 @@ export function InboxScreen({ navigation }: Props) {
               <Text style={styles.myAddress}>
                 {shortenAddress(identity.address)}
                 {ethBalance != null ? ` · ${ethBalance} ETH` : ''}{' '}
-                <Text style={{ color: colors.success }}>●</Text>
+                <Text style={{ color: isInitializing ? colors.accent : colors.success }}>●</Text>
+                {isInitializing && !xmtpError ? ' setting up e2e…' : ''}
               </Text>
             )}
           </View>

@@ -9,7 +9,8 @@ import { MainNavigator }       from './navigation/MainNavigator'
 import { useWalletStore }      from './store/walletStore'
 import { useTheme }            from './hooks/useTheme'
 import { ThemeTransition }     from './components/ThemeTransition'
-import { PRIVY_APP_ID }        from './services/privyConfig'
+import { PRIVY_APP_ID, PRIVY_CLIENT_ID } from './services/privyConfig'
+import { XmtpProvider } from './contexts/XmtpContext'
 import type { RootStackParamList } from './navigation/types'
 
 const Stack = createNativeStackNavigator<RootStackParamList>()
@@ -50,6 +51,7 @@ export default function App() {
   return (
     <PrivyProvider
       appId={PRIVY_APP_ID}
+      clientId={PRIVY_CLIENT_ID}
       supportedChains={[sepolia]}
       config={{
         embedded: {
@@ -59,7 +61,9 @@ export default function App() {
         },
       }}
     >
-      <AppInner />
+      <XmtpProvider>
+        <AppInner />
+      </XmtpProvider>
     </PrivyProvider>
   )
 }

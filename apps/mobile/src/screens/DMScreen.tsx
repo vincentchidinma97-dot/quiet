@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, KeyboardAvoidingView, Platform, SafeAreaView,
+  ActivityIndicator,
 } from 'react-native'
 import Animated, {
   useSharedValue, useAnimatedStyle, useAnimatedProps,
@@ -17,21 +18,21 @@ import type { ThemeColors } from '../theme'
 import { shortenAddress, generateAvatarColor } from '@vault/shared'
 import { useHaptic } from '../hooks/useHaptic'
 import { useTheme } from '../hooks/useTheme'
+import { useXmtp } from '../hooks/useXmtp'
+import {
+  getOrCreateConversation,
+  sendMessage as xmtpSend,
+  listMessages,
+  streamMessages,
+} from '../services/xmtp'
+import type { XmtpConversation, XmtpMessage } from '../services/xmtp'
 
 type DMProps = NativeStackScreenProps<InboxStackParamList, 'DM'>
 
 const CONTRACT_REGEX = /0x[a-fA-F0-9]{40}/g
 
 function getPeerRep(_address: string) {
-  return { ethBalance: '3.1', badge: 'early Uniswap holder', isOnline: true }
-}
-
-function getMockMessages(peerAddress: string) {
-  return [
-    { id: '1', from: peerAddress, content: 'gm ser. you caught the AAVE move this morning?',                                      timestamp: Date.now() - 600000 },
-    { id: '2', from: 'me',        content: 'been watching it. finally broke 4.2k',                                                 timestamp: Date.now() - 480000 },
-    { id: '3', from: peerAddress, content: 'check this contract — 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D',                    timestamp: Date.now() - 360000 },
-  ]
+  return { ethBalance: '—', badge: 'xmtp user', isOnline: true }
 }
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
@@ -51,8 +52,7 @@ function buildPath(points: { x: number; y: number }[]) {
 
 const SPARKLINE_PATH = buildPath(pts)
 const SPARKLINE_LEN  = 160
-
-const AnimatedPath = Animated.createAnimatedComponent(Path)
+const AnimatedPath   = Animated.createAnimatedComponent(Path)
 
 function TokenSparkline() {
   const { colors } = useTheme()
@@ -78,7 +78,6 @@ function TokenSparkline() {
   )
 }
 
-// ── Counting number ───────────────────────────────────────────────────────────
 function CountUp({ target, duration = 600, suffix = '' }: { target: number; duration?: number; suffix?: string }) {
   const { colors } = useTheme()
   const styles = getStyles(colors)
@@ -87,7 +86,6 @@ function CountUp({ target, duration = 600, suffix = '' }: { target: number; dura
   useEffect(() => {
     let start: number | null = null
     let raf: ReturnType<typeof setTimeout>
-
     function tick(now: number) {
       if (!start) start = now
       const elapsed  = now - start
@@ -97,7 +95,6 @@ function CountUp({ target, duration = 600, suffix = '' }: { target: number; dura
       setDisplayed(parseFloat((eased * target).toFixed(1)))
       if (fraction < 1) raf = setTimeout(() => tick(Date.now()), 16)
     }
-
     raf = setTimeout(() => tick(Date.now()), 0)
     return () => clearTimeout(raf)
   }, [target, duration])
@@ -105,7 +102,6 @@ function CountUp({ target, duration = 600, suffix = '' }: { target: number; dura
   return <Text style={styles.tcChange}>+{displayed.toFixed(1)}{suffix}</Text>
 }
 
-// ── Pulsing price ─────────────────────────────────────────────────────────────
 function PulsingPrice({ price }: { price: string }) {
   const { colors } = useTheme()
   const styles = getStyles(colors)
@@ -124,23 +120,16 @@ function PulsingPrice({ price }: { price: string }) {
     )
   }, [])
 
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }))
-
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
   return <Animated.Text style={[styles.tcStatVal, animStyle]}>{price}</Animated.Text>
 }
 
-// ── Snipe button ──────────────────────────────────────────────────────────────
 function SnipeButton({ onPress }: { onPress: () => void }) {
   const haptic = useHaptic()
   const { colors } = useTheme()
   const styles = getStyles(colors)
   const scale  = useSharedValue(1)
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }))
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
 
   return (
     <Animated.View style={animStyle}>
@@ -157,23 +146,20 @@ function SnipeButton({ onPress }: { onPress: () => void }) {
   )
 }
 
-// ── Animated send button ──────────────────────────────────────────────────────
-function SendButton({ onPress }: { onPress: () => void }) {
+function SendButton({ onPress, disabled }: { onPress: () => void; disabled?: boolean }) {
   const { colors } = useTheme()
   const styles = getStyles(colors)
   const scale = useSharedValue(1)
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }))
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
 
   return (
     <Animated.View style={animStyle}>
       <TouchableOpacity
-        style={styles.sendBtn}
-        onPressIn={() => { scale.value = withTiming(0.92, { duration: 100, easing: Easing.out(Easing.ease) }) }}
-        onPressOut={() => { scale.value = withTiming(1.0,  { duration: 150, easing: Easing.out(Easing.ease) }) }}
+        style={[styles.sendBtn, disabled && { opacity: 0.5 }]}
+        onPressIn={() => { scale.value = withTiming(0.92, { duration: 100 }) }}
+        onPressOut={() => { scale.value = withTiming(1.0,  { duration: 150 }) }}
         onPress={onPress}
+        disabled={disabled}
         activeOpacity={1}
       >
         <Text style={{ fontSize: 14, color: colors.bg }}>➤</Text>
@@ -182,7 +168,6 @@ function SendButton({ onPress }: { onPress: () => void }) {
   )
 }
 
-// ── Animated message bubble entrance ─────────────────────────────────────────
 function AnimatedMessageBubble({ children }: { children: React.ReactNode }) {
   const opacity    = useSharedValue(0)
   const translateY = useSharedValue(20)
@@ -206,7 +191,6 @@ function AnimatedMessageBubble({ children }: { children: React.ReactNode }) {
   return <Animated.View style={animStyle}>{children}</Animated.View>
 }
 
-// ── Token card ────────────────────────────────────────────────────────────────
 function TokenCard({ onSnipe }: { onSnipe: () => void }) {
   const { colors } = useTheme()
   const styles = getStyles(colors)
@@ -217,9 +201,7 @@ function TokenCard({ onSnipe }: { onSnipe: () => void }) {
         <Text style={styles.tcName}>AAVE / ETH</Text>
         <CountUp target={8.4} duration={600} suffix="%" />
       </View>
-      <View style={styles.tcChartRow}>
-        <TokenSparkline />
-      </View>
+      <View style={styles.tcChartRow}><TokenSparkline /></View>
       <View style={styles.tcStats}>
         <View style={styles.tcStat}>
           <PulsingPrice price="$112.40" />
@@ -237,6 +219,26 @@ function TokenCard({ onSnipe }: { onSnipe: () => void }) {
   )
 }
 
+// ── Unified message shape ─────────────────────────────────────────────────────
+interface UIMessage {
+  id:        string
+  from:      string   // wallet address or 'me'
+  content:   string
+  timestamp: number
+  isNew?:    boolean
+}
+
+function xmtpToUI(msg: XmtpMessage, myAddress: string): UIMessage {
+  const senderAddr = (msg as any).senderAddress ?? (msg as any).senderInboxId ?? ''
+  const isMe = senderAddr.toLowerCase() === myAddress.toLowerCase()
+  return {
+    id:        msg.id,
+    from:      isMe ? 'me' : senderAddr,
+    content:   (typeof msg.content === 'string' ? msg.content : typeof msg.content === 'function' ? '' : JSON.stringify(msg.content)) as string,
+    timestamp: typeof msg.sent === 'number' ? msg.sent : new Date(msg.sent).getTime(),
+  }
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 export function DMScreen({ route, navigation }: DMProps) {
   const haptic = useHaptic()
@@ -244,23 +246,73 @@ export function DMScreen({ route, navigation }: DMProps) {
   const styles = getStyles(colors)
 
   const { peerAddress } = route.params
-  const [messages, setMessages] = useState(() => getMockMessages(peerAddress))
-  const [input, setInput]       = useState('')
-  const flatRef   = useRef<FlatList>(null)
-  const newMsgIds = useRef<Set<string>>(new Set())
-  const avatar    = generateAvatarColor(peerAddress)
-  const rep       = getPeerRep(peerAddress)
+  const { xmtpClient, error: xmtpError } = useXmtp()
 
-  function sendMessage() {
-    if (!input.trim()) return
-    const msg = { id: Date.now().toString(), from: 'me', content: input.trim(), timestamp: Date.now() }
-    newMsgIds.current.add(msg.id)
-    setMessages((prev) => [...prev, msg])
+  const [messages, setMessages]     = useState<UIMessage[]>([])
+  const [input, setInput]           = useState('')
+  const [loadingMsgs, setLoadingMsgs] = useState(true)
+  const [sending, setSending]       = useState(false)
+
+  const flatRef    = useRef<FlatList>(null)
+  const convoRef   = useRef<XmtpConversation | null>(null)
+  const newMsgIds  = useRef<Set<string>>(new Set())
+  const myAddress  = useRef('')
+  const avatar     = generateAvatarColor(peerAddress)
+  const rep        = getPeerRep(peerAddress)
+
+  // Load history and start stream
+  useEffect(() => {
+    if (!xmtpClient) return
+    myAddress.current = xmtpClient.address
+
+    let unsub: (() => void) | null = null
+
+    async function load() {
+      try {
+        const convo = await getOrCreateConversation(xmtpClient!, peerAddress)
+        convoRef.current = convo
+
+        const msgs = await listMessages(convo, 50)
+        setMessages(msgs.map((m) => xmtpToUI(m, xmtpClient!.address)))
+        setLoadingMsgs(false)
+
+        setTimeout(() => flatRef.current?.scrollToEnd({ animated: false }), 100)
+
+        unsub = await streamMessages(convo, (msg) => {
+          const ui = xmtpToUI(msg, xmtpClient!.address)
+          newMsgIds.current.add(ui.id)
+          setMessages((prev) => {
+            if (prev.find((m) => m.id === ui.id)) return prev
+            return [...prev, ui]
+          })
+          setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100)
+        })
+      } catch (err) {
+        console.error('[XMTP] load error:', err)
+        setLoadingMsgs(false)
+      }
+    }
+
+    load()
+    return () => { unsub?.() }
+  }, [xmtpClient, peerAddress])
+
+  async function handleSend() {
+    if (!input.trim() || !convoRef.current || sending) return
+    const text = input.trim()
     setInput('')
-    setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100)
+    setSending(true)
+    try {
+      await xmtpSend(convoRef.current, text)
+    } catch (err) {
+      console.error('[XMTP] send error:', err)
+      setInput(text) // restore on failure
+    } finally {
+      setSending(false)
+    }
   }
 
-  function renderMessage({ item }: { item: typeof messages[0] }) {
+  function renderMessage({ item }: { item: UIMessage }) {
     const isOut       = item.from === 'me'
     const hasAddr     = CONTRACT_REGEX.test(item.content)
     const shouldAnimate = newMsgIds.current.has(item.id)
@@ -282,7 +334,7 @@ export function DMScreen({ route, navigation }: DMProps) {
               {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
             <View style={styles.sigBadge}>
-              <Text style={styles.sigText}>signed</Text>
+              <Text style={styles.sigText}>e2e</Text>
             </View>
           </View>
           {hasAddr && !isOut && (
@@ -310,7 +362,7 @@ export function DMScreen({ route, navigation }: DMProps) {
           <Text style={styles.hAddress}>{shortenAddress(peerAddress, 6)}</Text>
           <View style={styles.hRep}>
             <View style={styles.onlineDot} />
-            <Text style={styles.hRepText}>online · {rep.ethBalance} ETH · {rep.badge}</Text>
+            <Text style={styles.hRepText}>{rep.badge}</Text>
           </View>
         </View>
         <View style={styles.hActions}>
@@ -328,7 +380,7 @@ export function DMScreen({ route, navigation }: DMProps) {
 
       <View style={styles.encBar}>
         <Text style={{ fontSize: 11, color: colors.accent }}>🛡</Text>
-        <Text style={styles.encText}>end-to-end encrypted · signed · zero metadata</Text>
+        <Text style={styles.encText}>end-to-end encrypted · XMTP · zero metadata</Text>
       </View>
 
       <KeyboardAvoidingView
@@ -336,15 +388,39 @@ export function DMScreen({ route, navigation }: DMProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={90}
       >
-        <FlatList
-          ref={flatRef}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.msgList}
-          onLayout={() => flatRef.current?.scrollToEnd({ animated: false })}
-          showsVerticalScrollIndicator={false}
-        />
+        {xmtpError === 'native_build_required' ? (
+          <View style={styles.loadingWrap}>
+            <Text style={{ fontSize: 24 }}>🔒</Text>
+            <Text style={[styles.loadingText, { color: colors.accent, fontSize: 13 }]}>
+              encrypted messaging requires a native build
+            </Text>
+            <Text style={styles.loadingText}>
+              expo go doesn't support xmtp's native crypto module.{'\n'}
+              a dev build via xcode or eas will enable this.
+            </Text>
+          </View>
+        ) : loadingMsgs ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={styles.loadingText}>loading encrypted messages…</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatRef}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.msgList}
+            onLayout={() => flatRef.current?.scrollToEnd({ animated: false })}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyText}>no messages yet</Text>
+                <Text style={styles.emptySubtext}>say something — it's encrypted</Text>
+              </View>
+            }
+          />
+        )}
 
         <View style={styles.inputRow}>
           <TouchableOpacity
@@ -360,9 +436,10 @@ export function DMScreen({ route, navigation }: DMProps) {
             placeholder={`message ${shortenAddress(peerAddress)}…`}
             placeholderTextColor={colors.textTertiary}
             multiline
-            onSubmitEditing={sendMessage}
+            editable={!sending && !!xmtpClient}
+            onSubmitEditing={handleSend}
           />
-          <SendButton onPress={() => { haptic.medium(); sendMessage() }} />
+          <SendButton onPress={() => { haptic.medium(); handleSend() }} disabled={sending || !xmtpClient} />
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -388,7 +465,12 @@ function getStyles(colors: ThemeColors) {
     hBtnIcon:      { fontSize: 14, color: colors.textSecondary },
     encBar:        { flexDirection: 'row', alignItems: 'center', gap: Spacing['2'], paddingHorizontal: Spacing['4'], paddingVertical: Spacing['1'], backgroundColor: colors.surfaceAlt, borderBottomWidth: BorderWidth.hairline, borderBottomColor: colors.border },
     encText:       { fontFamily: Typography.mono, fontSize: Typography.size.xs, color: colors.textTertiary },
-    msgList:       { padding: Spacing['3'], gap: Spacing['1'] },
+    loadingWrap:   { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing['3'] },
+    loadingText:   { fontFamily: Typography.mono, fontSize: Typography.size.xs, color: colors.textTertiary },
+    emptyWrap:     { flex: 1, alignItems: 'center', paddingTop: Spacing['20'], gap: Spacing['2'] },
+    emptyText:     { fontFamily: Typography.serif, fontSize: Typography.size.md, color: colors.textTertiary },
+    emptySubtext:  { fontFamily: Typography.mono, fontSize: Typography.size.xs, color: colors.textTertiary },
+    msgList:       { padding: Spacing['3'], gap: Spacing['1'], flexGrow: 1 },
     msgWrap:       { flexDirection: 'row', gap: Spacing['2'], marginVertical: 2, alignItems: 'flex-end' },
     msgWrapOut:    { flexDirection: 'row-reverse' },
     msgAvatar:     { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: BorderWidth.hairline, borderColor: colors.border, flexShrink: 0 },
@@ -401,7 +483,6 @@ function getStyles(colors: ThemeColors) {
     bubbleTime:    { fontFamily: Typography.mono, fontSize: 9, color: colors.textTertiary },
     sigBadge:      { borderWidth: BorderWidth.hairline, borderColor: colors.border, borderRadius: 2, paddingHorizontal: 3, paddingVertical: 1 },
     sigText:       { fontFamily: Typography.mono, fontSize: 8, color: colors.accentDim },
-    // Token card
     tokenCard:     { backgroundColor: colors.surfaceAlt, borderRadius: Radius.lg, borderWidth: BorderWidth.hairline, borderColor: colors.border, padding: Spacing['3'], marginTop: Spacing['2'] },
     tcHead:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing['2'] },
     tcName:        { fontFamily: Typography.sans, fontSize: Typography.size.sm, fontWeight: Typography.weight.medium, color: colors.textPrimary },
@@ -413,7 +494,6 @@ function getStyles(colors: ThemeColors) {
     tcStatLbl:     { fontFamily: Typography.mono, fontSize: 9, color: colors.textTertiary, marginTop: 2 },
     snipeBtn:      { backgroundColor: colors.accent, borderRadius: Radius.md, paddingVertical: Spacing['2'], alignItems: 'center' },
     snipeBtnText:  { fontFamily: Typography.sans, fontSize: Typography.size.sm, fontWeight: Typography.weight.medium, color: colors.bg },
-    // Input row
     inputRow:      { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing['2'], padding: Spacing['3'], borderTopWidth: BorderWidth.hairline, borderTopColor: colors.border },
     toolBtn:       { width: 32, height: 32, borderRadius: Radius.md, borderWidth: BorderWidth.hairline, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
     textInput:     { flex: 1, backgroundColor: colors.surface, borderRadius: Radius.md, borderWidth: BorderWidth.hairline, borderColor: colors.border, paddingHorizontal: Spacing['3'], paddingVertical: Spacing['2'], fontFamily: Typography.sans, fontSize: Typography.size.sm, color: colors.textPrimary, maxHeight: 80 },
