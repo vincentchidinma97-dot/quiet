@@ -35,9 +35,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="paper">
-      <body className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" data-theme="paper" suppressHydrationWarning>
+      <head>
         <ThemeScript />
+      </head>
+      <body className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable}`}>
         <Providers>
           {children}
         </Providers>

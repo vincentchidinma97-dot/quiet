@@ -20,7 +20,9 @@ export async function getOrCreateConversation(
     identifier: peerAddress,
     identifierKind: IdentifierKind.Ethereum,
   })
-  console.log('[quiet/xmtp] DM ready, id:', dm.id)
+  console.log('[quiet/xmtp] DM ready, id:', dm.id, '— syncing conversation...')
+  await dm.sync()
+  console.log('[quiet/xmtp] ✓ conversation synced')
   return dm
 }
 
@@ -32,12 +34,15 @@ export async function sendMessage(conversation: Dm, text: string): Promise<strin
 }
 
 export async function listMessages(conversation: Dm): Promise<DecodedMessage[]> {
+  console.log('[quiet/xmtp] loading messages for conversation', conversation.id, '...')
+  console.log('[quiet/xmtp] syncing conversation...')
   await conversation.sync()
+  console.log('[quiet/xmtp] ✓ conversation sync complete')
   const msgs = await conversation.messages()
   const text = msgs.filter(
     (m) => m.kind === GroupMessageKind.Application && isText(m),
   )
-  console.log('[quiet/xmtp] listMessages: loaded', text.length, 'text messages')
+  console.log('[quiet/xmtp] ✓ found', text.length, 'messages')
   return text as DecodedMessage[]
 }
 
@@ -68,7 +73,7 @@ export async function listConversations(client: Client): Promise<Dm[]> {
   console.log('[quiet/xmtp] syncing conversations...')
   await client.conversations.sync()
   const dms = await client.conversations.listDms()
-  console.log('[quiet/xmtp] listConversations:', dms.length, 'DMs')
+  console.log('[quiet/xmtp] ✓ sync complete, found', dms.length, 'conversations')
   return dms
 }
 
@@ -96,4 +101,20 @@ export async function checkCanMessage(
     { identifier: address, identifierKind: IdentifierKind.Ethereum },
   ])
   return result.get(address.toLowerCase()) ?? false
+}
+
+export async function getConversationStatus(
+  client: Client,
+  dm: Dm,
+): Promise<'accepted' | 'pending'> {
+  // Sync this conversation so we have an up-to-date message list
+  await dm.sync()
+  const msgs = await dm.messages()
+  const appMsgs = msgs.filter((m) => m.kind === GroupMessageKind.Application)
+  const iSentOne = appMsgs.some((m) => m.senderInboxId === client.inboxId)
+  if (iSentOne) return 'accepted'
+  // If the peer sent messages but I haven't replied → request
+  if (appMsgs.length > 0) return 'pending'
+  // Empty conversation (I initiated it, nothing sent yet)
+  return 'accepted'
 }

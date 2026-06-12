@@ -49,7 +49,7 @@ export default function LandingPage() {
 
         <button
           className={styles.enterBtn}
-          onClick={login}
+          onClick={() => login()}
           disabled={!ready}
         >
           enter quiet

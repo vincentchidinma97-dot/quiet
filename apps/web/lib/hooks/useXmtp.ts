@@ -39,6 +39,19 @@ export function useXmtp(): UseXmtpResult {
 
         const address = embeddedWallet.address as `0x${string}`
 
+        // Reuse the same XMTP installation across page loads.
+        // Without this, every refresh creates a new MLS installation
+        // that isn't a member of existing DM groups.
+        const storageKey = `xmtp-key-${address.toLowerCase()}`
+        let dbEncryptionKey: Uint8Array
+        const stored = localStorage.getItem(storageKey)
+        if (stored) {
+          dbEncryptionKey = Uint8Array.from(atob(stored).split('').map((c) => c.charCodeAt(0)))
+        } else {
+          dbEncryptionKey = crypto.getRandomValues(new Uint8Array(32))
+          localStorage.setItem(storageKey, btoa(String.fromCharCode(...dbEncryptionKey)))
+        }
+
         const signer = {
           type: 'EOA' as const,
           getIdentifier: () => ({
@@ -63,8 +76,16 @@ export function useXmtp(): UseXmtpResult {
 
         console.log('[quiet/xmtp] calling Client.create...')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const client = await Client.create(signer, { env: 'dev' } as any)
+        const client = await Client.create(signer, { env: 'dev', dbEncryptionKey } as any)
         console.log('[quiet/xmtp] ✓ client ready — inboxId:', client.inboxId)
+
+        // Pull the latest conversation list + welcome messages from the network
+        // before handing the client to the app. Without this, listConversations()
+        // would read a stale local DB on the first call.
+        console.log('[quiet/xmtp] syncing conversations from network...')
+        await client.conversations.sync()
+        console.log('[quiet/xmtp] ✓ initial sync complete')
+
         setXmtpClient(client)
       } catch (err: unknown) {
         // Log the full error object so we can see exactly what XMTP/Privy throws

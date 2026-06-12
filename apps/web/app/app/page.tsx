@@ -2,16 +2,21 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { usePrivy } from '@privy-io/react-auth'
+import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { QRCodeSVG as QRCodeSVGBase } from 'qrcode.react'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const QRCodeSVG = QRCodeSVGBase as any
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
-import { useWalletBalance } from '@/lib/hooks/useWalletBalance'
+import { SendModal } from '@/components/SendModal'
+import { sendEth, sendToken, estimateTxFee } from '@/lib/blockchain'
+import { TOKENS } from '@/lib/tokens'
+import type { Token } from '@/lib/tokens'
+import { useTokenBalances } from '@/lib/hooks/useTokenBalances'
 import { useXmtp } from '@/lib/hooks/useXmtp'
 import {
   listConversations,
   getOrCreateConversation,
+  getConversationStatus,
   listMessages,
   streamMessages,
   sendMessage,
@@ -26,12 +31,23 @@ function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-6)}`
 }
 
+function formatRelativeTime(date: Date): string {
+  const diff = Date.now() - date.getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h`
+  return `${Math.floor(h / 24)}d`
+}
+
 interface ConvEntry {
   id: string
   peerAddress: string
   dm: Dm
   lastMsgText: string | null
   lastMsgTime: Date | null
+  status: 'accepted' | 'pending'
 }
 
 // ─── Loading screen shown while XMTP initialises ────────────────────────────
@@ -51,11 +67,13 @@ function XmtpInitScreen({ message }: { message: string }) {
 export default function AppPage() {
   const router = useRouter()
   const { ready, authenticated, user, logout } = usePrivy()
+  const { wallets } = useWallets()
   const { xmtpClient, isInitializing, error: xmtpError } = useXmtp()
 
   // ── Wallet state
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
+  const [showSend, setShowSend] = useState(false)
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const walletAccount = (user?.linkedAccounts as any[])?.find(
@@ -63,7 +81,7 @@ export default function AppPage() {
   )
   const address: string | undefined =
     walletAccount?.address ?? (user as any)?.wallet?.address
-  const { balance, isLoading: balanceLoading } = useWalletBalance(address)
+  const { balances: tokenBalances } = useTokenBalances(address)
 
   // ── Conversation list
   const [convEntries, setConvEntries] = useState<ConvEntry[]>([])
@@ -89,6 +107,20 @@ export default function AppPage() {
   // ── Search filter
   const [search, setSearch] = useState('')
 
+  // ── Inbox tabs
+  const [tab, setTab] = useState<'messages' | 'requests'>('messages')
+
+  // ── Declined request IDs (soft-decline: local only, no XMTP/on-chain block)
+  const [declinedIds, setDeclinedIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const stored = localStorage.getItem('quiet-declined')
+      return stored ? new Set<string>(JSON.parse(stored)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
   // Auth guard
   useEffect(() => {
     if (ready && !authenticated) router.replace('/')
@@ -103,8 +135,11 @@ export default function AppPage() {
         const dms = await listConversations(xmtpClient)
         const entries = await Promise.all(
           dms.map(async (dm) => {
-            const peerAddress = await resolvePeerAddress(xmtpClient, dm)
-            const lastMsg = await dm.lastMessage()
+            const [peerAddress, lastMsg, status] = await Promise.all([
+              resolvePeerAddress(xmtpClient, dm),
+              dm.lastMessage(),
+              getConversationStatus(xmtpClient, dm),
+            ])
             const lastMsgText =
               lastMsg && typeof lastMsg.content === 'string'
                 ? (lastMsg.content as string)
@@ -115,6 +150,7 @@ export default function AppPage() {
               dm,
               lastMsgText,
               lastMsgTime: lastMsg?.sentAt ?? null,
+              status,
             } satisfies ConvEntry
           }),
         )
@@ -214,6 +250,7 @@ export default function AppPage() {
           dm,
           lastMsgText: null,
           lastMsgTime: null,
+          status: 'accepted', // we initiated this conversation
         }
         setConvEntries((prev) => [newEntry, ...prev])
         selectConversation(newEntry)
@@ -228,6 +265,18 @@ export default function AppPage() {
     }
   }
 
+  // Soft-decline a request: hide locally only.
+  // Does NOT block the sender on XMTP or on-chain — that's a future feature.
+  function handleDecline(id: string) {
+    setDeclinedIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      localStorage.setItem('quiet-declined', JSON.stringify([...next]))
+      return next
+    })
+    if (selectedConvId === id) setSelectedConvId(null)
+  }
+
   // Send a message
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
@@ -239,13 +288,44 @@ export default function AppPage() {
     setComposerText('')
     try {
       await sendMessage(entry.dm, text)
-      // Stream will deliver the message back; no need for optimistic update
+      // Reclassify as accepted after first reply (stream delivers the message itself)
+      setConvEntries((prev) =>
+        prev.map((c) => (c.id === entry.id ? { ...c, status: 'accepted' as const } : c)),
+      )
     } catch (err) {
       console.error('[quiet] send error:', err)
       setComposerText(text) // restore on failure
     } finally {
       setIsSending(false)
     }
+  }
+
+  async function handleEstimateGas(token: Token, toAddr: string, amount: string): Promise<string> {
+    if (!address) return 'unknown'
+    return estimateTxFee(
+      address as `0x${string}`,
+      toAddr as `0x${string}`,
+      token.address,
+      token.decimals,
+      amount,
+    )
+  }
+
+  async function handleSendToken(token: Token, toAddr: string, amount: string): Promise<string> {
+    const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy')
+    if (!embeddedWallet || !address) throw new Error('wallet not ready')
+    const provider = await embeddedWallet.getEthereumProvider()
+    if (token.address === null) {
+      return sendEth(provider, address as `0x${string}`, toAddr as `0x${string}`, amount)
+    }
+    return sendToken(
+      provider,
+      address as `0x${string}`,
+      token.address,
+      toAddr as `0x${string}`,
+      amount,
+      token.decimals,
+    )
   }
 
   function copyAddress() {
@@ -288,13 +368,17 @@ export default function AppPage() {
   }
 
   const selectedEntry = convEntries.find((c) => c.id === selectedConvId)
+  const visibleConvs = convEntries.filter((c) => !declinedIds.has(c.id))
+  const acceptedConvs = visibleConvs.filter((c) => c.status === 'accepted')
+  const pendingConvs  = visibleConvs.filter((c) => c.status === 'pending')
+  const requestCount  = pendingConvs.length
+  const baseList = tab === 'messages' ? acceptedConvs : pendingConvs
   const filteredConvs = search.trim()
-    ? convEntries.filter((c) =>
-        c.peerAddress.toLowerCase().includes(search.toLowerCase()),
-      )
-    : convEntries
+    ? baseList.filter((c) => c.peerAddress.toLowerCase().includes(search.toLowerCase()))
+    : baseList
 
   return (
+    <>
     <div className={styles.shell}>
       {/* ── Left sidebar ──────────────────────────────── */}
       <aside className={styles.sidebar}>
@@ -317,28 +401,91 @@ export default function AppPage() {
           />
         </div>
 
+        {/* ── Tab switcher ── */}
+        <div className={styles.tabs}>
+          <button
+            className={`${styles.tab} ${tab === 'messages' ? styles.tabActive : ''}`}
+            onClick={() => setTab('messages')}
+          >
+            messages
+          </button>
+          <button
+            className={`${styles.tab} ${tab === 'requests' ? styles.tabActive : ''}`}
+            onClick={() => setTab('requests')}
+          >
+            requests
+            {requestCount > 0 && (
+              <span className={styles.tabBadge}>{requestCount}</span>
+            )}
+          </button>
+        </div>
+
         <div className={styles.convList}>
           {convLoading ? (
             <span className={styles.emptyList}>syncing…</span>
           ) : filteredConvs.length === 0 ? (
-            <span className={styles.emptyList}>no correspondence yet</span>
-          ) : (
+            <span className={styles.emptyList}>
+              {tab === 'messages' ? 'no correspondence yet' : 'no requests'}
+            </span>
+          ) : tab === 'messages' ? (
             filteredConvs.map((entry) => (
               <button
                 key={entry.id}
                 className={`${styles.convRow} ${selectedConvId === entry.id ? styles.convRowActive : ''}`}
                 onClick={() => selectConversation(entry)}
               >
-                <span className={styles.convPeer}>
-                  {truncateAddress(entry.peerAddress)}
-                </span>
+                <div className={styles.convRowTop}>
+                  <span className={styles.convPeer}>
+                    {truncateAddress(entry.peerAddress)}
+                  </span>
+                  {entry.lastMsgTime && (
+                    <span className={styles.convTime}>
+                      {formatRelativeTime(entry.lastMsgTime)}
+                    </span>
+                  )}
+                </div>
                 {entry.lastMsgText && (
                   <span className={styles.convPreview}>
-                    {entry.lastMsgText.slice(0, 36)}
-                    {entry.lastMsgText.length > 36 ? '…' : ''}
+                    {entry.lastMsgText.slice(0, 30)}
+                    {entry.lastMsgText.length > 30 ? '…' : ''}
                   </span>
                 )}
               </button>
+            ))
+          ) : (
+            filteredConvs.map((entry) => (
+              <div key={entry.id} className={styles.requestCard}>
+                <div className={styles.reqCardTop}>
+                  <span className={styles.reqCardPeer}>
+                    {truncateAddress(entry.peerAddress)}
+                  </span>
+                  {entry.lastMsgTime && (
+                    <span className={styles.convTime}>
+                      {formatRelativeTime(entry.lastMsgTime)}
+                    </span>
+                  )}
+                </div>
+                {entry.lastMsgText && (
+                  <p className={styles.reqCardQuote}>
+                    &ldquo;{entry.lastMsgText.slice(0, 80)}
+                    {entry.lastMsgText.length > 80 ? '…' : ''}&rdquo;
+                  </p>
+                )}
+                <div className={styles.reqCardActions}>
+                  <button
+                    className={styles.reqAcceptBtn}
+                    onClick={() => selectConversation(entry)}
+                  >
+                    accept
+                  </button>
+                  <button
+                    className={styles.reqDeclineBtn}
+                    onClick={() => handleDecline(entry.id)}
+                  >
+                    decline
+                  </button>
+                </div>
+              </div>
             ))
           )}
         </div>
@@ -500,29 +647,61 @@ export default function AppPage() {
                 </div>
               </div>
 
-              <div className={styles.balanceCard}>
-                <p className={styles.balanceLabel}>sepolia eth</p>
-                <p className={styles.balanceValue}>
-                  {balanceLoading && balance === null ? (
-                    <span className={styles.balancePlaceholder}>—</span>
-                  ) : (
-                    <>
-                      <span className={styles.balanceNum}>{balance ?? '0.0000'}</span>
-                      <span className={styles.balanceUnit}> ETH</span>
-                    </>
-                  )}
-                </p>
+              <div className={styles.assetsList}>
+                <p className={styles.assetsLabel}>assets</p>
+                {tokenBalances.map(({ token, balance }) => {
+                  const isZero = !balance || parseFloat(balance) === 0
+                  return (
+                    <div
+                      key={token.symbol}
+                      className={`${styles.assetItem} ${isZero ? styles.assetItemMuted : ''}`}
+                    >
+                      <div
+                        className={styles.assetIcon}
+                        style={{ background: token.iconColor + '22', color: token.iconColor }}
+                      >
+                        {token.iconLetters}
+                      </div>
+                      <div className={styles.assetMeta}>
+                        <span className={styles.assetSymbol}>{token.symbol}</span>
+                        <span className={styles.assetName}>{token.name}</span>
+                      </div>
+                      <span className={styles.assetBalance}>{balance ?? '—'}</span>
+                    </div>
+                  )
+                })}
               </div>
 
-              <button
-                className={styles.receiveBtn}
-                onClick={() => setShowQR((v) => !v)}
-              >
-                {showQR ? 'hide' : 'receive'}
-              </button>
+              <div className={styles.actionRow}>
+                <button
+                  className={styles.receiveBtn}
+                  onClick={() => setShowQR((v) => !v)}
+                >
+                  {showQR ? 'hide' : 'receive'}
+                </button>
+                <button
+                  className={styles.sendBtn}
+                  onClick={() => setShowSend(true)}
+                >
+                  send
+                </button>
+              </div>
 
               {showQR && (
                 <div className={styles.qrWrap}>
+                  <p className={styles.qrAcceptsLabel}>this address accepts</p>
+                  <div className={styles.qrTokenBadges}>
+                    {TOKENS.map((token) => (
+                      <div
+                        key={token.symbol}
+                        className={styles.qrTokenBadge}
+                        style={{ background: token.iconColor + '22', color: token.iconColor }}
+                      >
+                        <span className={styles.qrBadgeIcon}>{token.iconLetters}</span>
+                        <span className={styles.qrBadgeSymbol}>{token.symbol}</span>
+                      </div>
+                    ))}
+                  </div>
                   <QRCodeSVG
                     value={address}
                     size={160}
@@ -531,6 +710,9 @@ export default function AppPage() {
                     level="M"
                   />
                   <p className={styles.qrAddress}>{address}</p>
+                  <p className={styles.qrNetworkNote}>
+                    all on ethereum sepolia — sending other networks here will result in loss of funds
+                  </p>
                 </div>
               )}
             </>
@@ -544,5 +726,14 @@ export default function AppPage() {
         </div>
       </aside>
     </div>
+
+    <SendModal
+      isOpen={showSend}
+      onClose={() => setShowSend(false)}
+      balances={tokenBalances}
+      onEstimateGas={handleEstimateGas}
+      onSend={handleSendToken}
+    />
+    </>
   )
 }
