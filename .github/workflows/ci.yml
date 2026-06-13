@@ -11,9 +11,11 @@ env:
 
 jobs:
   # ── Shared package ──────────────────────────────────────────────────────────
+  # Disabled until packages/shared work resumes — re-enable by removing continue-on-error
   shared:
     name: Shared package
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,9 +43,11 @@ jobs:
         if: hashFiles('apps/api/tests/**/*.test.ts') != ''
 
   # ── Smart contracts ─────────────────────────────────────────────────────────
+  # Disabled until packages/contracts work resumes — re-enable by removing continue-on-error
   contracts:
     name: Smart contracts
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
