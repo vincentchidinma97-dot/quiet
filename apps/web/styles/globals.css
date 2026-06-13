@@ -11,6 +11,20 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  --text-scale: 1;
+  font-size: calc(100% * var(--text-scale));
+}
+
+/* typography: modern — Geist replaces Fraunces + Inter */
+:root[data-typography="modern"] {
+  --font-fraunces: var(--font-geist);
+  --font-inter: var(--font-geist);
+}
+
+/* typography: humanist — Manrope replaces Fraunces + Inter */
+:root[data-typography="humanist"] {
+  --font-fraunces: var(--font-manrope);
+  --font-inter: var(--font-manrope);
 }
 
 body {

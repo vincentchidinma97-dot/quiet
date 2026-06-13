@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { QRCodeSVG as QRCodeSVGBase } from 'qrcode.react'
 import { ThemeSwitcher } from './ThemeSwitcher'
+import { TypographySwitcher } from './TypographySwitcher'
+import { TextSizePicker } from './TextSizePicker'
 import { TOKENS } from '@/lib/tokens'
 import type { TokenBalance } from '@/lib/hooks/useTokenBalances'
 import styles from './SettingsPanel.module.css'
@@ -64,6 +66,22 @@ export function SettingsPanel({ address, tokenBalances, user, onShowSend, onLogo
         <div className={styles.card}>
           <div className={styles.themeRow}>
             <ThemeSwitcher />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Typography ── */}
+      <section className={styles.section}>
+        <p className={styles.sectionLabel}>typography</p>
+        <TypographySwitcher />
+      </section>
+
+      {/* ── Text size ── */}
+      <section className={styles.section}>
+        <p className={styles.sectionLabel}>text size</p>
+        <div className={styles.card}>
+          <div className={styles.themeRow}>
+            <TextSizePicker />
           </div>
         </div>
       </section>

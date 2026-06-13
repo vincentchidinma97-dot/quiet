@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Fraunces, Inter, JetBrains_Mono } from 'next/font/google'
+import { Fraunces, Inter, JetBrains_Mono, Geist, Manrope } from 'next/font/google'
 import { Providers }    from '@/components/Providers'
 import { ThemeScript }  from '@/components/ThemeScript'
 import '../styles/globals.css'
@@ -23,6 +23,18 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 })
 
+const geist = Geist({
+  subsets: ['latin'],
+  variable: '--font-geist',
+  display: 'swap',
+})
+
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-manrope',
+  display: 'swap',
+})
+
 export const metadata: Metadata = {
   title: 'quiet.',
   description: 'encrypted correspondence between wallets. live token intelligence in every thread.',
@@ -35,11 +47,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="paper" suppressHydrationWarning>
+    <html
+      lang="en"
+      data-theme="paper"
+      suppressHydrationWarning
+      className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable} ${geist.variable} ${manrope.variable}`}
+    >
       <head>
         <ThemeScript />
       </head>
-      <body className={`${fraunces.variable} ${inter.variable} ${jetbrainsMono.variable}`}>
+      <body>
         <Providers>
           {children}
         </Providers>

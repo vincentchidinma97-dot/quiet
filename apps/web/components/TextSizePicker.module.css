@@ -1,0 +1,48 @@
+.group {
+  display: flex;
+  gap: 0;
+  width: fit-content;
+}
+
+.btn {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 0.45rem 1rem;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+
+.btn:first-child {
+  border-radius: 7px 0 0 7px;
+}
+
+.btn:last-child {
+  border-radius: 0 7px 7px 0;
+}
+
+.btn + .btn {
+  border-left: none;
+}
+
+.btn:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.btnActive {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  z-index: 1;
+  position: relative;
+}
+
+/* Ensure active left border is visible even when right neighbor removes left border */
+.btnActive + .btn {
+  border-left: 1px solid var(--border);
+}

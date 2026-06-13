@@ -49,7 +49,7 @@ export default function LandingPage() {
 
         <button
           className={styles.enterBtn}
-          onClick={() => login()}
+          onClick={async () => { await login(); router.push('/app') }}
           disabled={!ready}
         >
           enter quiet
