@@ -835,3 +835,192 @@
   margin-top: 0.5rem;
 }
 .logoutBtn:hover { color: var(--negative); border-color: var(--negative); }
+
+/* ═══════════════════════════════════════════════════
+   MOBILE LAYOUT  ≤767px
+   ═══════════════════════════════════════════════════ */
+
+/* Hide the three-column shell on mobile */
+@media (max-width: 767px) {
+  .shell { display: none !important; }
+}
+
+/* Mobile layout wrapper — off by default, flex on mobile */
+.mobileLayout {
+  display: none;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh; /* dynamic viewport height — shrinks when keyboard appears */
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .mobileLayout { display: flex; }
+}
+
+/* Scrollable content area above the tab bar */
+.mobileContent {
+  flex: 1;
+  min-height: 0; /* required for flex children to not overflow */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Mobile inbox (conversation list) ──────────────── */
+.mobileInbox {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mobileInboxHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  height: 56px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Mobile chat view ───────────────────────────────── */
+.mobileChatView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mobileChatHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0 0.75rem 0 0.25rem;
+  height: 56px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.mobileBack {
+  font-size: 1.375rem;
+  line-height: 1;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.mobileBack:hover { opacity: 0.7; }
+
+/* ── Mobile panel (portfolio / settings) ─────────────── */
+.mobilePanel {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Bottom tab bar ──────────────────────────────────── */
+.tabBar {
+  flex-shrink: 0;
+  height: calc(60px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: stretch;
+}
+
+.tabItem {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color 0.15s;
+  padding: 0;
+}
+.tabItem:hover { color: var(--text); }
+.tabItemActive { color: var(--accent); }
+
+.tabIcon {
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.tabLabel {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+/* ── Mobile tap-target + typography improvements ─────── */
+@media (max-width: 767px) {
+  /* Conversation rows — bigger tap targets */
+  .convRow {
+    padding: 0.875rem 1rem;
+    min-height: 56px;
+  }
+  .convPeer { font-size: 0.875rem; }
+  .convPreview { font-size: 0.8125rem; max-width: none; }
+  .convTime { font-size: 0.6875rem; opacity: 1; }
+
+  /* Inbox tabs */
+  .tab { padding: 0.75rem 0.5rem; font-size: 0.6875rem; min-height: 44px; }
+
+  /* Search */
+  .searchInput {
+    font-size: 0.875rem;
+    padding: 0.625rem 0.875rem;
+    min-height: 44px;
+  }
+
+  /* New message */
+  .newMsgBtn { min-height: 48px; font-size: 0.8125rem; }
+  .newMsgInput {
+    font-size: 0.9375rem;
+    padding: 0.625rem 0.875rem;
+    min-height: 44px;
+  }
+  .newMsgSubmit, .newMsgCancel { min-height: 44px; font-size: 0.75rem; }
+
+  /* Request cards */
+  .reqAcceptBtn, .reqDeclineBtn {
+    min-height: 40px;
+    padding: 0.625rem 0.5rem;
+    font-size: 0.6875rem;
+  }
+
+  /* Composer */
+  .composer { padding: 0.75rem 1rem; }
+  .composerInput {
+    font-size: 1rem;
+    min-height: 44px;
+    padding: 0.625rem 0.875rem;
+  }
+  .composerSend {
+    min-height: 44px;
+    padding: 0.625rem 1rem;
+    font-size: 0.8125rem;
+  }
+
+  /* Message bubbles */
+  .msgText { font-size: 0.9375rem; }
+  .msgBubble { max-width: 82%; }
+}

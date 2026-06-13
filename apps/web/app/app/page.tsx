@@ -96,6 +96,7 @@ export default function AppPage() {
   const [msgLoading, setMsgLoading] = useState(false)
   const streamCleanupRef = useRef<(() => void) | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const mobileMessagesEndRef = useRef<HTMLDivElement>(null)
 
   // ── Composer
   const [composerText, setComposerText] = useState('')
@@ -114,6 +115,9 @@ export default function AppPage() {
 
   // ── Passkey setup prompt — shown once after Google/Email login if no passkey linked
   const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false)
+
+  // ── Mobile tab navigation (only active below 768px breakpoint)
+  const [mobileTab, setMobileTab] = useState<'inbox' | 'portfolio' | 'settings'>('inbox')
   useEffect(() => {
     if (!ready || !authenticated || !user) return
     if (wallet.source !== 'privy') return
@@ -190,9 +194,10 @@ export default function AppPage() {
     return () => window.removeEventListener('focus', loadConversations)
   }, [loadConversations])
 
-  // Auto-scroll messages to bottom
+  // Auto-scroll messages to bottom (desktop + mobile refs)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    mobileMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   // Cleanup stream on unmount
@@ -706,6 +711,317 @@ export default function AppPage() {
     {showPasskeyPrompt && (
       <PasskeySetupModal onClose={handlePasskeyPromptClose} />
     )}
+
+    {/* ── Mobile layout (≤767px) — hidden on desktop via CSS ── */}
+    <div className={styles.mobileLayout}>
+      <div className={styles.mobileContent}>
+
+        {mobileTab === 'inbox' ? (
+          selectedConvId && selectedEntry ? (
+
+            /* ── Mobile chat view ── */
+            <div className={styles.mobileChatView}>
+              <div className={styles.mobileChatHeader}>
+                <button
+                  className={styles.mobileBack}
+                  onClick={() => setSelectedConvId(null)}
+                  type="button"
+                  aria-label="back to inbox"
+                >
+                  ←
+                </button>
+                <div className={styles.convHeaderLeft}>
+                  <span className={styles.convHeaderPeer}>
+                    {truncateAddress(selectedEntry.peerAddress)}
+                  </span>
+                  {(tagMap[selectedEntry.peerAddress.toLowerCase()] ?? []).map((tag) => (
+                    <TagPill key={tag} tag={tag} />
+                  ))}
+                  <button
+                    className={styles.addTagBtn}
+                    onClick={() => setTagEditorAddress(selectedEntry.peerAddress)}
+                    type="button"
+                  >
+                    + tag
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.messageList}>
+                {msgLoading ? (
+                  <div className={styles.msgLoading}>
+                    <span className={styles.msgLoadingText}>loading…</span>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className={styles.msgEmpty}>
+                    <span className={styles.msgEmptyText}>no messages yet — say something</span>
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const isMe = msg.senderInboxId === xmtpClient?.inboxId
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`${styles.msgRow} ${isMe ? styles.msgRowMe : styles.msgRowThem}`}
+                      >
+                        <div
+                          className={`${styles.msgBubble} ${isMe ? styles.msgBubbleMe : styles.msgBubbleThem}`}
+                        >
+                          <span className={styles.msgText}>
+                            {typeof msg.content === 'string' ? msg.content : ''}
+                          </span>
+                          <span className={styles.msgTime}>
+                            {msg.sentAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+                <div ref={mobileMessagesEndRef} />
+              </div>
+
+              <form className={styles.composer} onSubmit={handleSend}>
+                <input
+                  className={styles.composerInput}
+                  type="text"
+                  value={composerText}
+                  onChange={(e) => setComposerText(e.target.value)}
+                  placeholder="write a message…"
+                  disabled={isSending}
+                  autoComplete="off"
+                  spellCheck
+                />
+                <button
+                  className={styles.composerSend}
+                  type="submit"
+                  disabled={isSending || !composerText.trim()}
+                >
+                  {isSending ? '…' : 'send'}
+                </button>
+              </form>
+            </div>
+
+          ) : (
+
+            /* ── Mobile inbox list ── */
+            <div className={styles.mobileInbox}>
+              <div className={styles.mobileInboxHeader}>
+                <span className={styles.wordmark}>
+                  quiet<span className={styles.wordmarkDot}>.</span>
+                </span>
+                <ThemeSwitcher />
+              </div>
+
+              <div className={styles.searchWrap}>
+                <input
+                  className={styles.searchInput}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="search 0x… or name"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className={styles.tabs}>
+                <button
+                  className={`${styles.tab} ${tab === 'messages' ? styles.tabActive : ''}`}
+                  onClick={() => setTab('messages')}
+                >
+                  messages
+                </button>
+                <button
+                  className={`${styles.tab} ${tab === 'requests' ? styles.tabActive : ''}`}
+                  onClick={() => setTab('requests')}
+                >
+                  requests
+                  {requestCount > 0 && (
+                    <span className={styles.tabBadge}>{requestCount}</span>
+                  )}
+                </button>
+              </div>
+
+              <div className={styles.convList}>
+                {convLoading ? (
+                  <span className={styles.emptyList}>syncing…</span>
+                ) : filteredConvs.length === 0 ? (
+                  <span className={styles.emptyList}>
+                    {tab === 'messages' ? 'no correspondence yet' : 'no requests'}
+                  </span>
+                ) : tab === 'messages' ? (
+                  filteredConvs.map((entry) => (
+                    <button
+                      key={entry.id}
+                      className={`${styles.convRow} ${selectedConvId === entry.id ? styles.convRowActive : ''}`}
+                      onClick={() => selectConversation(entry)}
+                    >
+                      <div className={styles.convRowTop}>
+                        <div className={styles.convRowLeft}>
+                          <span className={styles.convPeer}>
+                            {truncateAddress(entry.peerAddress)}
+                          </span>
+                          {(tagMap[entry.peerAddress.toLowerCase()] ?? []).slice(0, 2).map((tag) => (
+                            <TagPill key={tag} tag={tag} />
+                          ))}
+                          {(tagMap[entry.peerAddress.toLowerCase()] ?? []).length > 2 && (
+                            <TagPill tag={`+${(tagMap[entry.peerAddress.toLowerCase()] ?? []).length - 2}`} />
+                          )}
+                        </div>
+                        {entry.lastMsgTime && (
+                          <span className={styles.convTime}>
+                            {formatRelativeTime(entry.lastMsgTime)}
+                          </span>
+                        )}
+                      </div>
+                      {entry.lastMsgText && (
+                        <span className={styles.convPreview}>
+                          {entry.lastMsgText.slice(0, 40)}
+                          {entry.lastMsgText.length > 40 ? '…' : ''}
+                        </span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  filteredConvs.map((entry) => (
+                    <div key={entry.id} className={styles.requestCard}>
+                      <div className={styles.reqCardTop}>
+                        <div className={styles.reqCardLeft}>
+                          <span className={styles.reqCardPeer}>
+                            {truncateAddress(entry.peerAddress)}
+                          </span>
+                          {(tagMap[entry.peerAddress.toLowerCase()] ?? []).map((tag) => (
+                            <TagPill key={tag} tag={tag} />
+                          ))}
+                        </div>
+                        {entry.lastMsgTime && (
+                          <span className={styles.convTime}>
+                            {formatRelativeTime(entry.lastMsgTime)}
+                          </span>
+                        )}
+                      </div>
+                      {entry.lastMsgText && (
+                        <p className={styles.reqCardQuote}>
+                          &ldquo;{entry.lastMsgText.slice(0, 80)}
+                          {entry.lastMsgText.length > 80 ? '…' : ''}&rdquo;
+                        </p>
+                      )}
+                      <div className={styles.reqCardActions}>
+                        <button
+                          className={styles.reqAcceptBtn}
+                          onClick={() => selectConversation(entry)}
+                        >
+                          accept
+                        </button>
+                        <button
+                          className={styles.reqDeclineBtn}
+                          onClick={() => handleDecline(entry.id)}
+                        >
+                          decline
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className={styles.newMsgWrap}>
+                {showNewMsg ? (
+                  <form className={styles.newMsgForm} onSubmit={handleNewConversation}>
+                    <input
+                      className={styles.newMsgInput}
+                      type="text"
+                      value={newMsgAddr}
+                      onChange={(e) => {
+                        setNewMsgAddr(e.target.value)
+                        setNewMsgError(null)
+                      }}
+                      placeholder="0x wallet address"
+                      spellCheck={false}
+                      autoComplete="off"
+                      autoFocus
+                    />
+                    {newMsgError && (
+                      <span className={styles.newMsgError}>{newMsgError}</span>
+                    )}
+                    <div className={styles.newMsgActions}>
+                      <button
+                        type="submit"
+                        className={styles.newMsgSubmit}
+                        disabled={newMsgLoading}
+                      >
+                        {newMsgLoading ? '…' : 'open'}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.newMsgCancel}
+                        onClick={() => {
+                          setShowNewMsg(false)
+                          setNewMsgAddr('')
+                          setNewMsgError(null)
+                        }}
+                      >
+                        cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    className={styles.newMsgBtn}
+                    onClick={() => setShowNewMsg(true)}
+                    disabled={!xmtpClient}
+                  >
+                    + new message
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        ) : (
+
+          /* ── Portfolio / Settings — both render SettingsPanel ── */
+          <div className={styles.mobilePanel}>
+            <SettingsPanel
+              address={address}
+              tokenBalances={tokenBalances}
+              user={user}
+              walletSource={wallet.source}
+              onShowSend={() => setShowSend(true)}
+              onLogout={handleLogout}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom tab bar ── */}
+      <nav className={styles.tabBar}>
+        <button
+          className={`${styles.tabItem} ${mobileTab === 'inbox' ? styles.tabItemActive : ''}`}
+          onClick={() => setMobileTab('inbox')}
+          type="button"
+        >
+          <span className={styles.tabIcon}>✉</span>
+          <span className={styles.tabLabel}>inbox</span>
+        </button>
+        <button
+          className={`${styles.tabItem} ${mobileTab === 'portfolio' ? styles.tabItemActive : ''}`}
+          onClick={() => setMobileTab('portfolio')}
+          type="button"
+        >
+          <span className={styles.tabIcon}>◈</span>
+          <span className={styles.tabLabel}>portfolio</span>
+        </button>
+        <button
+          className={`${styles.tabItem} ${mobileTab === 'settings' ? styles.tabItemActive : ''}`}
+          onClick={() => setMobileTab('settings')}
+          type="button"
+        >
+          <span className={styles.tabIcon}>⚙</span>
+          <span className={styles.tabLabel}>settings</span>
+        </button>
+      </nav>
+    </div>
     </>
   )
 }
