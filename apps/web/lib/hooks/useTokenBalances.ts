@@ -50,8 +50,10 @@ export function useTokenBalances(address: string | undefined): {
   useEffect(() => {
     fetch()
     intervalRef.current = setInterval(fetch, 30_000)
+    window.addEventListener('focus', fetch)
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
+      window.removeEventListener('focus', fetch)
     }
   }, [fetch])
 

@@ -88,8 +88,8 @@
 /* ── Copy button ─────────────────────────────────────────── */
 .copyBtn {
   font-family: var(--font-mono);
-  font-size: 0.625rem;
-  color: var(--text-muted);
+  font-size: 0.6875rem;
+  color: var(--text);
   background: none;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -97,9 +97,9 @@
   cursor: pointer;
   line-height: 1;
   flex-shrink: 0;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.copyBtn:hover { color: var(--text); border-color: var(--text-muted); }
+.copyBtn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 .copyBtnDone { color: var(--positive) !important; border-color: var(--positive) !important; }
 
 /* ── Wallet action row ───────────────────────────────────── */

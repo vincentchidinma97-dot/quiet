@@ -121,42 +121,50 @@ export default function AppPage() {
     if (ready && !authenticated) router.replace('/')
   }, [ready, authenticated, router])
 
-  // Load conversations when XMTP client is ready
-  useEffect(() => {
+  // Load conversations
+  const loadConversations = useCallback(async () => {
     if (!xmtpClient) return
     setConvLoading(true)
-    ;(async () => {
-      try {
-        const dms = await listConversations(xmtpClient)
-        const entries = await Promise.all(
-          dms.map(async (dm) => {
-            const [peerAddress, lastMsg, status] = await Promise.all([
-              resolvePeerAddress(xmtpClient, dm),
-              dm.lastMessage(),
-              getConversationStatus(xmtpClient, dm),
-            ])
-            const lastMsgText =
-              lastMsg && typeof lastMsg.content === 'string'
-                ? (lastMsg.content as string)
-                : null
-            return {
-              id: dm.id,
-              peerAddress,
-              dm,
-              lastMsgText,
-              lastMsgTime: lastMsg?.sentAt ?? null,
-              status,
-            } satisfies ConvEntry
-          }),
-        )
-        setConvEntries(entries)
-      } catch (err) {
-        console.error('[quiet] loadConversations error:', err)
-      } finally {
-        setConvLoading(false)
-      }
-    })()
+    try {
+      const dms = await listConversations(xmtpClient)
+      const entries = await Promise.all(
+        dms.map(async (dm) => {
+          const [peerAddress, lastMsg, status] = await Promise.all([
+            resolvePeerAddress(xmtpClient, dm),
+            dm.lastMessage(),
+            getConversationStatus(xmtpClient, dm),
+          ])
+          const lastMsgText =
+            lastMsg && typeof lastMsg.content === 'string'
+              ? (lastMsg.content as string)
+              : null
+          return {
+            id: dm.id,
+            peerAddress,
+            dm,
+            lastMsgText,
+            lastMsgTime: lastMsg?.sentAt ?? null,
+            status,
+          } satisfies ConvEntry
+        }),
+      )
+      setConvEntries(entries)
+    } catch (err) {
+      console.error('[quiet] loadConversations error:', err)
+    } finally {
+      setConvLoading(false)
+    }
   }, [xmtpClient])
+
+  useEffect(() => {
+    loadConversations()
+  }, [loadConversations])
+
+  // Re-sync conversations and balances when the tab regains focus
+  useEffect(() => {
+    window.addEventListener('focus', loadConversations)
+    return () => window.removeEventListener('focus', loadConversations)
+  }, [loadConversations])
 
   // Auto-scroll messages to bottom
   useEffect(() => {
