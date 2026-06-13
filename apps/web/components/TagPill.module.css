@@ -1,0 +1,33 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.04em;
+  border-radius: 10px;
+  padding: 0.125rem 0.4375rem;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  line-height: 1.5;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.remove {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  line-height: 1;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.remove:hover { opacity: 1; }

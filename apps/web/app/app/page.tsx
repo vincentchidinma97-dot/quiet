@@ -23,6 +23,9 @@ import {
   type DecodedMessage,
 } from '@/lib/xmtp'
 import styles from './page.module.css'
+import { getAllTags } from '@/lib/tags'
+import { TagPill } from '@/components/TagPill'
+import { TagEditorModal } from '@/components/TagEditorModal'
 
 function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-6)}`
@@ -104,6 +107,11 @@ export default function AppPage() {
 
   // ── Inbox tabs
   const [tab, setTab] = useState<'messages' | 'requests'>('messages')
+
+  // ── Tag map — mirrors localStorage, refreshed after every modal save
+  const [tagMap, setTagMap] = useState<Record<string, string[]>>({})
+  const [tagEditorAddress, setTagEditorAddress] = useState<string | null>(null)
+  useEffect(() => { setTagMap(getAllTags()) }, [])
 
   // ── Declined request IDs (soft-decline: local only, no XMTP/on-chain block)
   const [declinedIds, setDeclinedIds] = useState<Set<string>>(() => {
@@ -337,6 +345,10 @@ export default function AppPage() {
     router.push('/')
   }
 
+  function refreshTags() {
+    setTagMap(getAllTags())
+  }
+
   // ── Auth loading screen
   if (!ready || !authenticated) {
     return (
@@ -430,9 +442,17 @@ export default function AppPage() {
                 onClick={() => selectConversation(entry)}
               >
                 <div className={styles.convRowTop}>
-                  <span className={styles.convPeer}>
-                    {truncateAddress(entry.peerAddress)}
-                  </span>
+                  <div className={styles.convRowLeft}>
+                    <span className={styles.convPeer}>
+                      {truncateAddress(entry.peerAddress)}
+                    </span>
+                    {(tagMap[entry.peerAddress.toLowerCase()] ?? []).slice(0, 2).map((tag) => (
+                      <TagPill key={tag} tag={tag} />
+                    ))}
+                    {(tagMap[entry.peerAddress.toLowerCase()] ?? []).length > 2 && (
+                      <TagPill tag={`+${(tagMap[entry.peerAddress.toLowerCase()] ?? []).length - 2}`} />
+                    )}
+                  </div>
                   {entry.lastMsgTime && (
                     <span className={styles.convTime}>
                       {formatRelativeTime(entry.lastMsgTime)}
@@ -451,9 +471,14 @@ export default function AppPage() {
             filteredConvs.map((entry) => (
               <div key={entry.id} className={styles.requestCard}>
                 <div className={styles.reqCardTop}>
-                  <span className={styles.reqCardPeer}>
-                    {truncateAddress(entry.peerAddress)}
-                  </span>
+                  <div className={styles.reqCardLeft}>
+                    <span className={styles.reqCardPeer}>
+                      {truncateAddress(entry.peerAddress)}
+                    </span>
+                    {(tagMap[entry.peerAddress.toLowerCase()] ?? []).map((tag) => (
+                      <TagPill key={tag} tag={tag} />
+                    ))}
+                  </div>
                   {entry.lastMsgTime && (
                     <span className={styles.convTime}>
                       {formatRelativeTime(entry.lastMsgTime)}
@@ -550,9 +575,21 @@ export default function AppPage() {
           <div className={styles.conversation}>
             {/* Conversation header */}
             <div className={styles.convHeader}>
-              <span className={styles.convHeaderPeer}>
-                {truncateAddress(selectedEntry.peerAddress)}
-              </span>
+              <div className={styles.convHeaderLeft}>
+                <span className={styles.convHeaderPeer}>
+                  {truncateAddress(selectedEntry.peerAddress)}
+                </span>
+                {(tagMap[selectedEntry.peerAddress.toLowerCase()] ?? []).map((tag) => (
+                  <TagPill key={tag} tag={tag} />
+                ))}
+                <button
+                  className={styles.addTagBtn}
+                  onClick={() => setTagEditorAddress(selectedEntry.peerAddress)}
+                  type="button"
+                >
+                  + tag
+                </button>
+              </div>
               <span className={styles.convHeaderEncLabel}>⬡ end-to-end encrypted</span>
             </div>
 
@@ -639,6 +676,14 @@ export default function AppPage() {
       onEstimateGas={handleEstimateGas}
       onSend={handleSendToken}
     />
+
+    {tagEditorAddress && (
+      <TagEditorModal
+        address={tagEditorAddress}
+        onClose={() => setTagEditorAddress(null)}
+        onTagsChange={refreshTags}
+      />
+    )}
     </>
   )
 }

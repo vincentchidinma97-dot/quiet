@@ -768,6 +768,50 @@
 }
 .sendBtn:hover { opacity: 0.8; }
 
+/* ── Tag layout helpers ──────────────────────────────── */
+.convRowLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.convHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.reqCardLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.addTagBtn {
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 0.15rem 0.45rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+.addTagBtn:hover { color: var(--accent); border-color: var(--accent); }
+
 /* ── No wallet / Logout ──────────────────────────────── */
 .noWallet {
   font-family: var(--font-mono);
