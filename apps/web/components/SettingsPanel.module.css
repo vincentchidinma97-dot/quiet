@@ -196,6 +196,41 @@
   max-width: 220px;
 }
 
+/* ── Passkey row ─────────────────────────────────────────── */
+.passkeyEnabled {
+  color: var(--accent) !important;
+}
+
+.passkeyMuted {
+  opacity: 0.5;
+}
+
+.passkeyActionBtn {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.passkeyActionBtn:hover { color: var(--text); }
+.passkeyActionBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.passkeyError {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  color: var(--negative);
+  margin: 0;
+  padding: 0 1rem 0.5rem;
+  letter-spacing: 0.02em;
+}
+
 /* ── Security text ───────────────────────────────────────── */
 .securityText {
   font-family: var(--font-inter);

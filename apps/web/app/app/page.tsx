@@ -28,6 +28,7 @@ import styles from './page.module.css'
 import { getAllTags } from '@/lib/tags'
 import { TagPill } from '@/components/TagPill'
 import { TagEditorModal } from '@/components/TagEditorModal'
+import { PasskeySetupModal } from '@/components/PasskeySetupModal'
 
 function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-6)}`
@@ -110,6 +111,23 @@ export default function AppPage() {
   const [tagMap, setTagMap] = useState<Record<string, string[]>>({})
   const [tagEditorAddress, setTagEditorAddress] = useState<string | null>(null)
   useEffect(() => { setTagMap(getAllTags()) }, [])
+
+  // ── Passkey setup prompt — shown once after Google/Email login if no passkey linked
+  const [showPasskeyPrompt, setShowPasskeyPrompt] = useState(false)
+  useEffect(() => {
+    if (!ready || !authenticated || !user) return
+    if (wallet.source !== 'privy') return
+    try {
+      if (localStorage.getItem('quiet-passkey-prompted')) return
+    } catch { return }
+    const hasPasskey = (user.linkedAccounts as any[]).some((a: any) => a.type === 'passkey')
+    if (!hasPasskey) setShowPasskeyPrompt(true)
+  }, [ready, authenticated, user, wallet.source])
+
+  function handlePasskeyPromptClose() {
+    try { localStorage.setItem('quiet-passkey-prompted', 'true') } catch { /* ignore */ }
+    setShowPasskeyPrompt(false)
+  }
 
   // ── Declined request IDs (soft-decline: local only, no XMTP/on-chain block)
   const [declinedIds, setDeclinedIds] = useState<Set<string>>(() => {
@@ -683,6 +701,10 @@ export default function AppPage() {
         onClose={() => setTagEditorAddress(null)}
         onTagsChange={refreshTags}
       />
+    )}
+
+    {showPasskeyPrompt && (
+      <PasskeySetupModal onClose={handlePasskeyPromptClose} />
     )}
     </>
   )

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useLinkWithPasskey, useUnlinkPasskey } from '@privy-io/react-auth'
 import { QRCodeSVG as QRCodeSVGBase } from 'qrcode.react'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { TypographySwitcher } from './TypographySwitcher'
@@ -42,6 +43,42 @@ interface Props {
 export function SettingsPanel({ address, tokenBalances, user, walletSource, onShowSend, onLogout }: Props) {
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
+
+  // Passkey management — only called for Privy users
+  const { linkWithPasskey } = useLinkWithPasskey()
+  const { unlink: unlinkPasskey } = useUnlinkPasskey()
+  const [passkeyLinking, setPasskeyLinking] = useState(false)
+  const [passkeyUnlinking, setPasskeyUnlinking] = useState(false)
+  const [passkeyRowError, setPasskeyRowError] = useState<string | null>(null)
+
+  const linkedAccounts = (user?.linkedAccounts as any[]) ?? []
+  const passkeyAccount = linkedAccounts.find((a: any) => a.type === 'passkey')
+
+  async function handleLinkPasskey() {
+    setPasskeyRowError(null)
+    setPasskeyLinking(true)
+    try {
+      await linkWithPasskey()
+    } catch (err) {
+      setPasskeyRowError(err instanceof Error ? err.message : 'passkey setup failed')
+    } finally {
+      setPasskeyLinking(false)
+    }
+  }
+
+  async function handleUnlinkPasskey() {
+    if (!passkeyAccount) return
+    const credentialId: string = passkeyAccount.credentialId ?? passkeyAccount.credential_id
+    setPasskeyRowError(null)
+    setPasskeyUnlinking(true)
+    try {
+      await unlinkPasskey({ credentialId })
+    } catch (err) {
+      setPasskeyRowError(err instanceof Error ? err.message : 'could not remove passkey')
+    } finally {
+      setPasskeyUnlinking(false)
+    }
+  }
 
   function copyAddress() {
     if (!address) return
@@ -116,6 +153,43 @@ export function SettingsPanel({ address, tokenBalances, user, walletSource, onSh
             <span className={styles.rowLabel}>login</span>
             <span className={styles.rowMono}>{getLoginMethod(user, walletSource)}</span>
           </div>
+
+          {/* Passkey row — only for Privy users (WalletConnect users have no Privy account) */}
+          {walletSource === 'privy' && (
+            <>
+              <div className={styles.divider} />
+              <div className={styles.row}>
+                <span className={styles.rowLabel}>passkey</span>
+                <div className={styles.rowRight}>
+                  {passkeyAccount ? (
+                    <>
+                      <span className={`${styles.rowMono} ${styles.passkeyEnabled}`}>✓ enabled</span>
+                      <button
+                        className={styles.passkeyActionBtn}
+                        onClick={handleUnlinkPasskey}
+                        disabled={passkeyUnlinking}
+                      >
+                        {passkeyUnlinking ? '…' : 'remove'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`${styles.rowMono} ${styles.passkeyMuted}`}>not set up</span>
+                      <button
+                        className={styles.passkeyActionBtn}
+                        onClick={handleLinkPasskey}
+                        disabled={passkeyLinking}
+                      >
+                        {passkeyLinking ? '…' : 'add'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              {passkeyRowError && <p className={styles.passkeyError}>{passkeyRowError}</p>}
+            </>
+          )}
+
           <div className={styles.divider} />
           <div className={styles.row}>
             <span className={styles.rowLabel}>encryption</span>
