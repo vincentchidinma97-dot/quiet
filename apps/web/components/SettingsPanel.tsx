@@ -10,13 +10,6 @@ import styles from './SettingsPanel.module.css'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const QRCodeSVG = QRCodeSVGBase as any
 
-const LOGOUT_STEPS = [
-  'log out',
-  'are you sure?',
-  'this will log you out everywhere',
-  "you'll need to sign in again",
-]
-
 function truncate(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
@@ -36,13 +29,12 @@ interface Props {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   user: any
   onShowSend: () => void
-  onLogout: () => void
+  onLogout: () => Promise<void>
 }
 
 export function SettingsPanel({ address, tokenBalances, user, onShowSend, onLogout }: Props) {
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
-  const [logoutStep, setLogoutStep] = useState(0)
 
   function copyAddress() {
     if (!address) return
@@ -52,12 +44,12 @@ export function SettingsPanel({ address, tokenBalances, user, onShowSend, onLogo
     })
   }
 
-  function handleLogoutClick() {
-    if (logoutStep < LOGOUT_STEPS.length - 1) {
-      setLogoutStep((s) => s + 1)
-    } else {
-      onLogout()
-    }
+  async function handleLogoutClick() {
+    console.log('Logout button clicked')
+    if (!window.confirm('are you sure you want to log out?')) return
+    console.log('User confirmed logout')
+    await onLogout()
+    console.log('Logout complete, redirecting')
   }
 
   const ethBalance = tokenBalances.find((b) => b.token.symbol === 'ETH')?.balance ?? null
@@ -200,24 +192,9 @@ export function SettingsPanel({ address, tokenBalances, user, onShowSend, onLogo
 
       {/* ── Logout ── */}
       <section className={styles.section}>
-        {logoutStep > 0 && (
-          <button className={styles.cancelBtn} onClick={() => setLogoutStep(0)}>
-            cancel
-          </button>
-        )}
-        <button
-          className={`${styles.logoutBtn} ${logoutStep > 0 ? styles.logoutBtnLive : ''}`}
-          onClick={handleLogoutClick}
-        >
-          {LOGOUT_STEPS[logoutStep]}
+        <button className={styles.logoutBtn} onClick={handleLogoutClick}>
+          log out
         </button>
-        {logoutStep > 0 && (
-          <p className={styles.logoutHint}>
-            {logoutStep === 1 && 'tap again to continue'}
-            {logoutStep === 2 && 'one more tap'}
-            {logoutStep === 3 && 'final confirmation'}
-          </p>
-        )}
       </section>
     </div>
   )
