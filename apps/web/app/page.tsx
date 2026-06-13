@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter }           from 'next/navigation'
 import { usePrivy }            from '@privy-io/react-auth'
+import { useAccount }          from 'wagmi'
 import { motion, AnimatePresence } from 'framer-motion'
+import { LoginModal }          from '@/components/LoginModal'
 import styles from './page.module.css'
 
 const ease = [0.22, 1, 0.36, 1] as const
@@ -19,15 +21,17 @@ const fadeUp = {
 
 export default function LandingPage() {
   const router = useRouter()
-  const { ready, authenticated, login } = usePrivy()
-  const [email, setEmail]       = useState('')
-  const [loading, setLoading]   = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const { ready, authenticated } = usePrivy()
+  const { isConnected: wcConnected } = useAccount()
+  const [email, setEmail]           = useState('')
+  const [loading, setLoading]       = useState(false)
+  const [submitted, setSubmitted]   = useState(false)
+  const [showLogin, setShowLogin]   = useState(false)
 
-  // Auto-redirect already-logged-in users
+  // Redirect already-authenticated users (Privy or WalletConnect)
   useEffect(() => {
-    if (ready && authenticated) router.push('/app')
-  }, [ready, authenticated, router])
+    if ((ready && authenticated) || wcConnected) router.push('/app')
+  }, [ready, authenticated, wcConnected, router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -40,121 +44,130 @@ export default function LandingPage() {
   }
 
   return (
-    <div className={styles.page}>
-      {/* ── Nav ── */}
-      <nav className={styles.nav}>
-        <span className={styles.wordmark}>
-          quiet<span className={styles.wordmarkDot}>.</span>
-        </span>
+    <>
+      <div className={styles.page}>
+        {/* ── Nav ── */}
+        <nav className={styles.nav}>
+          <span className={styles.wordmark}>
+            quiet<span className={styles.wordmarkDot}>.</span>
+          </span>
 
-        <button
-          className={styles.enterBtn}
-          onClick={async () => { await login(); router.push('/app') }}
-          disabled={!ready}
-        >
-          enter quiet
-        </button>
-      </nav>
+          <button
+            className={styles.enterBtn}
+            onClick={() => setShowLogin(true)}
+            disabled={!ready}
+          >
+            enter quiet
+          </button>
+        </nav>
 
-      {/* ── Hero ── */}
-      <main className={styles.hero}>
-        <motion.p
-          className={styles.eyebrow}
-          custom={0}
-          variants={fadeUp}
-          initial="hidden"
-          animate="visible"
-        >
-          correspondence protocol
-        </motion.p>
+        {/* ── Hero ── */}
+        <main className={styles.hero}>
+          <motion.p
+            className={styles.eyebrow}
+            custom={0}
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+          >
+            correspondence protocol
+          </motion.p>
 
-        <motion.h1
-          className={styles.headline}
-          custom={1}
-          variants={fadeUp}
-          initial="hidden"
-          animate="visible"
-        >
-          the market is loud.
-          <span className={styles.headlineAccent}>your edge isn't.</span>
-        </motion.h1>
+          <motion.h1
+            className={styles.headline}
+            custom={1}
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+          >
+            the market is loud.
+            <span className={styles.headlineAccent}>your edge isn't.</span>
+          </motion.h1>
 
-        <motion.p
-          className={styles.subtext}
-          custom={2}
-          variants={fadeUp}
-          initial="hidden"
-          animate="visible"
-        >
-          encrypted correspondence between wallets. live token intelligence in
-          every thread. no accounts, no email, no noise.
-        </motion.p>
+          <motion.p
+            className={styles.subtext}
+            custom={2}
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+          >
+            encrypted correspondence between wallets. live token intelligence in
+            every thread. no accounts, no email, no noise.
+          </motion.p>
 
-        <motion.div
-          className={styles.formWrap}
-          custom={3}
-          variants={fadeUp}
-          initial="hidden"
-          animate="visible"
-        >
-          <form className={styles.form} onSubmit={handleSubmit} noValidate>
-            <input
-              className={styles.emailInput}
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your email"
-              disabled={submitted}
-              autoComplete="email"
-              required
-            />
-            <button
-              className={styles.submitBtn}
-              type="submit"
-              disabled={loading || submitted}
-            >
-              {loading ? 'sending…' : submitted ? "you're in ✓" : 'request access'}
-            </button>
-          </form>
-
-          <AnimatePresence>
-            {submitted && (
-              <motion.p
-                className={styles.successMsg}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, ease }}
+          <motion.div
+            className={styles.formWrap}
+            custom={3}
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+          >
+            <form className={styles.form} onSubmit={handleSubmit} noValidate>
+              <input
+                className={styles.emailInput}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your email"
+                disabled={submitted}
+                autoComplete="email"
+                required
+              />
+              <button
+                className={styles.submitBtn}
+                type="submit"
+                disabled={loading || submitted}
               >
-                you're on the list — we'll be in touch.
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </main>
+                {loading ? 'sending…' : submitted ? "you're in ✓" : 'request access'}
+              </button>
+            </form>
 
-      {/* ── Footer stats ── */}
-      <motion.footer
-        className={styles.footer}
-        custom={4}
-        variants={fadeUp}
-        initial="hidden"
-        animate="visible"
-      >
-        <span className={styles.stat}>
-          <span className={styles.statValue}>2,847</span>
-          &nbsp;on the list
-        </span>
-        <span className={styles.divider} aria-hidden="true" />
-        <span className={styles.stat}>
-          <span className={styles.statValue}>zero</span>
-          &nbsp;data kept
-        </span>
-        <span className={styles.divider} aria-hidden="true" />
-        <span className={styles.stat}>
-          <span className={styles.statValue}>e2e</span>
-          &nbsp;encrypted
-        </span>
-      </motion.footer>
-    </div>
+            <AnimatePresence>
+              {submitted && (
+                <motion.p
+                  className={styles.successMsg}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, ease }}
+                >
+                  you're on the list — we'll be in touch.
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        </main>
+
+        {/* ── Footer stats ── */}
+        <motion.footer
+          className={styles.footer}
+          custom={4}
+          variants={fadeUp}
+          initial="hidden"
+          animate="visible"
+        >
+          <span className={styles.stat}>
+            <span className={styles.statValue}>2,847</span>
+            &nbsp;on the list
+          </span>
+          <span className={styles.divider} aria-hidden="true" />
+          <span className={styles.stat}>
+            <span className={styles.statValue}>zero</span>
+            &nbsp;data kept
+          </span>
+          <span className={styles.divider} aria-hidden="true" />
+          <span className={styles.stat}>
+            <span className={styles.statValue}>e2e</span>
+            &nbsp;encrypted
+          </span>
+        </motion.footer>
+      </div>
+
+      {/* ── Login modal ── */}
+      <AnimatePresence>
+        {showLogin && (
+          <LoginModal onClose={() => setShowLogin(false)} />
+        )}
+      </AnimatePresence>
+    </>
   )
 }

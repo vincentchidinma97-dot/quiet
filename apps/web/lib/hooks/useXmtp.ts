@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { fromHex } from 'viem'
 import { Client, IdentifierKind } from '@xmtp/browser-sdk'
+import { useConnectedWallet } from './useConnectedWallet'
 
 interface UseXmtpResult {
   xmtpClient: Client | null
@@ -12,36 +12,43 @@ interface UseXmtpResult {
 }
 
 export function useXmtp(): UseXmtpResult {
-  const { ready, authenticated } = usePrivy()
-  const { wallets } = useWallets()
+  const wallet = useConnectedWallet()
   const [xmtpClient, setXmtpClient] = useState<Client | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const initRef = useRef(false)
+  const prevAddressRef = useRef<string | undefined>(undefined)
+
+  // Reset when wallet address changes (e.g. user switches accounts)
+  useEffect(() => {
+    if (prevAddressRef.current !== wallet.address) {
+      prevAddressRef.current = wallet.address
+      if (prevAddressRef.current !== undefined) {
+        initRef.current = false
+        setXmtpClient(null)
+        setError(null)
+      }
+    }
+  }, [wallet.address])
 
   useEffect(() => {
-    if (!ready || !authenticated) return
-    const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy')
-    if (!embeddedWallet) return
+    if (!wallet.isConnected || !wallet.address) return
     if (initRef.current || xmtpClient) return
 
     initRef.current = true
     setIsInitializing(true)
     setError(null)
 
+    const address = wallet.address
+
     ;(async () => {
       try {
-        console.log('[quiet/xmtp] wallet found:', embeddedWallet.address, 'type:', embeddedWallet.walletClientType)
+        console.log('[quiet/xmtp] wallet:', address, 'source:', wallet.source)
 
-        console.log('[quiet/xmtp] getting EIP-1193 provider...')
-        const provider = await embeddedWallet.getEthereumProvider()
-        console.log('[quiet/xmtp] provider ready:', typeof provider, Object.keys(provider))
+        const provider = await wallet.getProvider()
+        if (!provider) throw new Error('no provider available')
+        console.log('[quiet/xmtp] provider ready')
 
-        const address = embeddedWallet.address as `0x${string}`
-
-        // Reuse the same XMTP installation across page loads.
-        // Without this, every refresh creates a new MLS installation
-        // that isn't a member of existing DM groups.
         const storageKey = `xmtp-key-${address.toLowerCase()}`
         let dbEncryptionKey: Uint8Array
         const stored = localStorage.getItem(storageKey)
@@ -59,17 +66,11 @@ export function useXmtp(): UseXmtpResult {
             identifierKind: IdentifierKind.Ethereum,
           }),
           signMessage: async (message: string): Promise<Uint8Array> => {
-            console.log('[quiet/xmtp] signMessage called — Privy modal should appear...')
-            console.log('[quiet/xmtp] message to sign (first 80 chars):', message.slice(0, 80))
-
-            // Use personal_sign directly on the EIP-1193 provider.
-            // Privy's provider handles the modal/recovery flow from here.
+            console.log('[quiet/xmtp] signMessage — wallet will prompt')
             const sig = await provider.request({
               method: 'personal_sign',
               params: [message, address],
             }) as string
-
-            console.log('[quiet/xmtp] signature received, length:', sig.length)
             return fromHex(sig as `0x${string}`, 'bytes')
           },
         }
@@ -77,31 +78,16 @@ export function useXmtp(): UseXmtpResult {
         console.log('[quiet/xmtp] calling Client.create...')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const client = await Client.create(signer, { env: 'dev', dbEncryptionKey } as any)
-        console.log('[quiet/xmtp] ✓ client ready — inboxId:', client.inboxId)
+        console.log('[quiet/xmtp] ✓ ready, inboxId:', client.inboxId)
 
-        // Pull the latest conversation list + welcome messages from the network
-        // before handing the client to the app. Without this, listConversations()
-        // would read a stale local DB on the first call.
-        console.log('[quiet/xmtp] syncing conversations from network...')
         await client.conversations.sync()
         console.log('[quiet/xmtp] ✓ initial sync complete')
 
         setXmtpClient(client)
       } catch (err: unknown) {
-        // Log the full error object so we can see exactly what XMTP/Privy throws
-        console.error('[quiet/xmtp] ✗ FULL error object:', err)
-        console.error('[quiet/xmtp] error type:', Object.prototype.toString.call(err))
-        if (err && typeof err === 'object') {
-          console.error('[quiet/xmtp] error keys:', Object.keys(err))
-          try {
-            console.error('[quiet/xmtp] error JSON:', JSON.stringify(err, null, 2))
-          } catch {
-            console.error('[quiet/xmtp] (error not JSON-serializable)')
-          }
-        }
+        console.error('[quiet/xmtp] ✗ error:', err)
         if (err instanceof Error) {
           console.error('[quiet/xmtp] message:', err.message)
-          console.error('[quiet/xmtp] stack:', err.stack)
           if ('cause' in err) console.error('[quiet/xmtp] cause:', err.cause)
         }
         setError(err instanceof Error ? err.message : 'failed to initialize messaging')
@@ -110,7 +96,9 @@ export function useXmtp(): UseXmtpResult {
         setIsInitializing(false)
       }
     })()
-  }, [ready, authenticated, wallets, xmtpClient])
+  // wallet.address and wallet.isConnected are primitives — safe as deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet.isConnected, wallet.address, xmtpClient])
 
   return { xmtpClient, isInitializing, error }
 }

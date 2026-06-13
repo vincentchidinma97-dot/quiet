@@ -5,7 +5,7 @@ export const PRIVY_CLIENT_ID = process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID!
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const privyConfig: any = {
-  loginMethods: ['apple', 'google', 'email'],
+  loginMethods: ['google', 'email', 'passkey'],
   embeddedWallets: {
     createOnLogin: 'users-without-wallets',
     showWalletUIs: false,

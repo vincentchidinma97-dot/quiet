@@ -16,10 +16,14 @@ function truncate(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-function getLoginMethod(user: any): string {
+import type { WalletSource } from '@/lib/hooks/useConnectedWallet'
+
+function getLoginMethod(user: any, source: WalletSource | null): string {
+  if (source === 'walletconnect') return 'external wallet'
   const accounts = (user?.linkedAccounts as any[]) ?? []
   if (accounts.some((a: any) => a.type === 'apple_oauth')) return 'apple'
   if (accounts.some((a: any) => a.type === 'google_oauth')) return 'google'
+  if (accounts.some((a: any) => a.type === 'passkey')) return 'passkey'
   const email = accounts.find((a: any) => a.type === 'email')
   if (email?.address) return email.address
   return 'email'
@@ -30,11 +34,12 @@ interface Props {
   tokenBalances: TokenBalance[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   user: any
+  walletSource: WalletSource | null
   onShowSend: () => void
   onLogout: () => Promise<void>
 }
 
-export function SettingsPanel({ address, tokenBalances, user, onShowSend, onLogout }: Props) {
+export function SettingsPanel({ address, tokenBalances, user, walletSource, onShowSend, onLogout }: Props) {
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
 
@@ -109,7 +114,7 @@ export function SettingsPanel({ address, tokenBalances, user, onShowSend, onLogo
           )}
           <div className={styles.row}>
             <span className={styles.rowLabel}>login</span>
-            <span className={styles.rowMono}>{getLoginMethod(user)}</span>
+            <span className={styles.rowMono}>{getLoginMethod(user, walletSource)}</span>
           </div>
           <div className={styles.divider} />
           <div className={styles.row}>

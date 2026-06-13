@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { usePrivy, useWallets } from '@privy-io/react-auth'
+import { usePrivy } from '@privy-io/react-auth'
+import { useAccount } from 'wagmi'
+import { useConnectedWallet } from '@/lib/hooks/useConnectedWallet'
 import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { SendModal } from '@/components/SendModal'
 import { SettingsPanel } from '@/components/SettingsPanel'
@@ -66,19 +68,15 @@ function XmtpInitScreen({ message }: { message: string }) {
 // ─── Main component ──────────────────────────────────────────────────────────
 export default function AppPage() {
   const router = useRouter()
-  const { ready, authenticated, user, logout } = usePrivy()
-  const { wallets } = useWallets()
+  const { ready, authenticated, user } = usePrivy()
+  const { isConnected: wcConnected } = useAccount()
+  const wallet = useConnectedWallet()
   const { xmtpClient, isInitializing, error: xmtpError } = useXmtp()
 
   // ── Wallet state
   const [showSend, setShowSend] = useState(false)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const walletAccount = (user?.linkedAccounts as any[])?.find(
-    (a: any) => a.address && (a.type === 'wallet' || a.walletClient === 'privy'),
-  )
-  const address: string | undefined =
-    walletAccount?.address ?? (user as any)?.wallet?.address
+  const address = wallet.address
   const { balances: tokenBalances } = useTokenBalances(address)
 
   // ── Conversation list
@@ -124,10 +122,10 @@ export default function AppPage() {
     }
   })
 
-  // Auth guard
+  // Auth guard — redirect only when Privy is ready AND neither source is connected
   useEffect(() => {
-    if (ready && !authenticated) router.replace('/')
-  }, [ready, authenticated, router])
+    if (ready && !authenticated && !wcConnected) router.replace('/')
+  }, [ready, authenticated, wcConnected, router])
 
   // Load conversations
   const loadConversations = useCallback(async () => {
@@ -323,9 +321,9 @@ export default function AppPage() {
   }
 
   async function handleSendToken(token: Token, toAddr: string, amount: string): Promise<string> {
-    const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy')
-    if (!embeddedWallet || !address) throw new Error('wallet not ready')
-    const provider = await embeddedWallet.getEthereumProvider()
+    if (!address) throw new Error('wallet not connected')
+    const provider = await wallet.getProvider()
+    if (!provider) throw new Error('provider not available')
     if (token.address === null) {
       return sendEth(provider, address as `0x${string}`, toAddr as `0x${string}`, amount)
     }
@@ -341,7 +339,7 @@ export default function AppPage() {
 
   async function handleLogout() {
     streamCleanupRef.current?.()
-    await logout()
+    await wallet.disconnect()
     router.push('/')
   }
 
@@ -350,7 +348,8 @@ export default function AppPage() {
   }
 
   // ── Auth loading screen
-  if (!ready || !authenticated) {
+  // Show spinner while Privy is initializing (and no WC connection to fall back on)
+  if ((!ready && !wcConnected) || (!authenticated && !wcConnected)) {
     return (
       <div className={styles.loading}>
         <span className={styles.loadingMark}>
@@ -663,6 +662,7 @@ export default function AppPage() {
           address={address}
           tokenBalances={tokenBalances}
           user={user}
+          walletSource={wallet.source}
           onShowSend={() => setShowSend(true)}
           onLogout={handleLogout}
         />
