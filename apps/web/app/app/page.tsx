@@ -51,6 +51,15 @@ const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: 'about',      label: 'about' },
 ]
 
+type AppTheme = 'paper' | 'eclipse' | 'white' | 'black'
+
+const APP_THEMES: { id: AppTheme; label: string; mode: string; bg: string; text: string; accent: string }[] = [
+  { id: 'paper',   label: 'paper',   mode: 'warm light', bg: '#F7F5F0', text: '#1A1D1A', accent: '#2D5A45' },
+  { id: 'eclipse', label: 'eclipse', mode: 'dark',        bg: '#101412', text: '#E8EDE8', accent: '#7DBA8C' },
+  { id: 'white',   label: 'white',   mode: 'clean light', bg: '#FFFFFF', text: '#000000', accent: '#2D5A45' },
+  { id: 'black',   label: 'black',   mode: 'pure dark',   bg: '#000000', text: '#FFFFFF', accent: '#7DBA8C' },
+]
+
 function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-6)}`
 }
@@ -109,6 +118,9 @@ export default function AppPage() {
   const [portfolioTab, setPortfolioTab] = useState<'assets' | 'activity'>('assets')
   const [mobileSettingsSection, setMobileSettingsSection] = useState<SettingsSection | null>(null)
 
+  // ── Theme
+  const [currentTheme, setCurrentTheme] = useState<AppTheme>('paper')
+
   // ── Portfolio
   const [showReceive, setShowReceive] = useState(false)
   const [showSend, setShowSend] = useState(false)
@@ -160,6 +172,14 @@ export default function AppPage() {
       return stored ? new Set<string>(JSON.parse(stored)) : new Set()
     } catch { return new Set() }
   })
+
+  // ── Sync theme from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('quiet-theme') as AppTheme | null
+      if (saved && APP_THEMES.some((t) => t.id === saved)) setCurrentTheme(saved)
+    } catch { /* ignore */ }
+  }, [])
 
   // ── Persist destination to localStorage
   useEffect(() => {
@@ -374,6 +394,12 @@ export default function AppPage() {
   }
 
   function refreshTags() { setTagMap(getAllTags()) }
+
+  function selectTheme(t: AppTheme) {
+    setCurrentTheme(t)
+    document.documentElement.setAttribute('data-theme', t)
+    try { localStorage.setItem('quiet-theme', t) } catch { /* ignore */ }
+  }
 
   function copyAddress() {
     if (!address) return
@@ -639,6 +665,10 @@ export default function AppPage() {
   function renderPortfolioMain() {
     return (
       <div className={styles.portfolioMain}>
+        <div>
+          <p className={styles.portfolioSectionTitle}>{portfolioTab === 'assets' ? 'assets' : 'activity'}</p>
+          <p className={styles.portfolioSectionSubtitle}>ethereum sepolia testnet</p>
+        </div>
         <div className={styles.portfolioHeader}>
           <p className={styles.portfolioTotalLabel}>total value</p>
           <p className={styles.portfolioTotalValue}>—</p>
@@ -705,10 +735,35 @@ export default function AppPage() {
         return (
           <div className={styles.settingsSection}>
             <p className={styles.settingsSectionTitle}>appearance</p>
-            <div className={styles.settingsCard}>
-              <div className={styles.settingsCardPad}>
-                <ThemeSwitcher />
-              </div>
+            <p className={styles.settingsSectionSubtitle}>choose your visual environment</p>
+            <div className={styles.themeGrid}>
+              {APP_THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  className={`${styles.themeCard} ${currentTheme === t.id ? styles.themeCardActive : ''}`}
+                  onClick={() => selectTheme(t.id)}
+                  type="button"
+                >
+                  <div className={styles.themeCardPreview} style={{ background: t.bg }}>
+                    <div
+                      className={styles.themeCardPreviewDot}
+                      style={{ background: t.accent }}
+                    />
+                    <div
+                      className={styles.themeCardPreviewLine}
+                      style={{ background: t.text, opacity: 0.6 }}
+                    />
+                    <div
+                      className={styles.themeCardPreviewLine}
+                      style={{ background: t.text, opacity: 0.3, width: '65%' }}
+                    />
+                  </div>
+                  <div className={styles.themeCardMeta}>
+                    <span className={styles.themeCardName}>{t.label}</span>
+                    <span className={styles.themeCardMode}>{t.mode}</span>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         )
@@ -716,6 +771,7 @@ export default function AppPage() {
         return (
           <div className={styles.settingsSection}>
             <p className={styles.settingsSectionTitle}>identity</p>
+            <p className={styles.settingsSectionSubtitle}>your wallet address and credentials</p>
             <div className={styles.settingsCard}>
               {address && (
                 <>
@@ -790,6 +846,7 @@ export default function AppPage() {
         return (
           <div className={styles.settingsSection}>
             <p className={styles.settingsSectionTitle}>security</p>
+            <p className={styles.settingsSectionSubtitle}>key management and session control</p>
             <div className={styles.settingsCard}>
               <p className={styles.securityText}>
                 your keys are sharded across your device, Privy servers, and your login method
@@ -811,6 +868,7 @@ export default function AppPage() {
         return (
           <div className={styles.settingsSection}>
             <p className={styles.settingsSectionTitle}>about</p>
+            <p className={styles.settingsSectionSubtitle}>protocol and version information</p>
             <div className={styles.settingsCard}>
               <div className={styles.settingsRow}>
                 <span className={styles.settingsRowLabel}>version</span>
