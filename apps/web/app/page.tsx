@@ -23,25 +23,11 @@ export default function LandingPage() {
   const router = useRouter()
   const { ready, authenticated } = usePrivy()
   const { isConnected: wcConnected } = useAccount()
-  const [email, setEmail]           = useState('')
-  const [loading, setLoading]       = useState(false)
-  const [submitted, setSubmitted]   = useState(false)
-  const [showLogin, setShowLogin]   = useState(false)
+  const [showLogin, setShowLogin] = useState(false)
 
-  // Redirect already-authenticated users (Privy or WalletConnect)
   useEffect(() => {
     if ((ready && authenticated) || wcConnected) router.push('/app')
   }, [ready, authenticated, wcConnected, router])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!email.trim() || loading || submitted) return
-    setLoading(true)
-    await new Promise((r) => setTimeout(r, 700))
-    console.log('[quiet] waitlist signup:', email)
-    setSubmitted(true)
-    setLoading(false)
-  }
 
   return (
     <>
@@ -96,48 +82,22 @@ export default function LandingPage() {
           </motion.p>
 
           <motion.div
-            className={styles.formWrap}
             custom={3}
             variants={fadeUp}
             initial="hidden"
             animate="visible"
           >
-            <form className={styles.form} onSubmit={handleSubmit} noValidate>
-              <input
-                className={styles.emailInput}
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your email"
-                disabled={submitted}
-                autoComplete="email"
-                required
-              />
-              <button
-                className={styles.submitBtn}
-                type="submit"
-                disabled={loading || submitted}
-              >
-                {loading ? 'sending…' : submitted ? "you're in ✓" : 'request access'}
-              </button>
-            </form>
-
-            <AnimatePresence>
-              {submitted && (
-                <motion.p
-                  className={styles.successMsg}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, ease }}
-                >
-                  you're on the list — we'll be in touch.
-                </motion.p>
-              )}
-            </AnimatePresence>
+            <button
+              className={styles.primaryCta}
+              onClick={() => setShowLogin(true)}
+              disabled={!ready}
+            >
+              enter quiet
+            </button>
           </motion.div>
         </main>
 
-        {/* ── Footer stats ── */}
+        {/* ── Footer ── */}
         <motion.footer
           className={styles.footer}
           custom={4}
@@ -145,11 +105,6 @@ export default function LandingPage() {
           initial="hidden"
           animate="visible"
         >
-          <span className={styles.stat}>
-            <span className={styles.statValue}>2,847</span>
-            &nbsp;on the list
-          </span>
-          <span className={styles.divider} aria-hidden="true" />
           <span className={styles.stat}>
             <span className={styles.statValue}>zero</span>
             &nbsp;data kept

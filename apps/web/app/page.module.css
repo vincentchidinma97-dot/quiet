@@ -20,12 +20,6 @@
   background: var(--bg);
 }
 
-.navLeft {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
 .wordmark {
   font-family: var(--font-fraunces);
   font-size: 1.4rem;
@@ -37,24 +31,6 @@
 
 .wordmarkDot {
   color: var(--accent);
-}
-
-.themeToggle {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  padding: 0.3rem 0.6rem;
-  border-radius: 100px;
-  transition: color 0.15s, border-color 0.15s;
-  line-height: 1;
-}
-
-.themeToggle:hover {
-  color: var(--text);
-  border-color: var(--text-muted);
 }
 
 .enterBtn {
@@ -75,6 +51,11 @@
 
 .enterBtn:hover {
   opacity: 0.8;
+}
+
+.enterBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Hero ────────────────────────────────────────────── */
@@ -124,77 +105,33 @@
   margin-bottom: 3rem;
 }
 
-/* ── Email form ──────────────────────────────────────── */
-.formWrap {
-  max-width: 440px;
-}
-
-.form {
-  display: flex;
-  align-items: stretch;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--card);
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.form:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.emailInput {
-  flex: 1;
-  padding: 0.875rem 1.25rem;
+/* ── Primary CTA ─────────────────────────────────────── */
+.primaryCta {
+  display: inline-flex;
+  align-items: center;
   font-family: var(--font-inter);
-  font-size: 0.9375rem;
-  color: var(--text);
-  background: transparent;
-  border: none;
-  outline: none;
-  min-width: 0;
-}
-
-.emailInput::placeholder {
-  color: var(--text-muted);
-}
-
-.submitBtn {
-  padding: 0.875rem 1.5rem;
-  font-family: var(--font-inter);
-  font-size: 0.8125rem;
+  font-size: 1rem;
   font-weight: 500;
-  color: #F7F5F0;
+  color: var(--bg);
   background: var(--accent);
   border: none;
-  white-space: nowrap;
+  padding: 0.875rem 2.25rem;
+  border-radius: 100px;
   letter-spacing: 0.015em;
   transition: opacity 0.15s;
-  flex-shrink: 0;
+  cursor: pointer;
 }
 
-.submitBtn:hover:not(:disabled) {
+.primaryCta:hover:not(:disabled) {
   opacity: 0.87;
 }
 
-.submitBtn:disabled {
-  opacity: 0.55;
+.primaryCta:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.successMsg {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.875rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--positive);
-  letter-spacing: 0.04em;
-}
-
-/* ── Footer stats ────────────────────────────────────── */
+/* ── Footer ──────────────────────────────────────────── */
 .footer {
   border-top: 1px solid var(--border);
   padding: 1.625rem max(1.75rem, 5vw);
@@ -247,20 +184,12 @@
     margin-bottom: 2rem;
     line-height: 1.7;
   }
-  .formWrap { max-width: 100%; }
-  /* Stack email + submit vertically inside the bordered card */
-  .form { flex-direction: column; }
-  .emailInput {
-    min-height: 52px;
-    font-size: 1rem;
-    padding: 0.875rem 1.125rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .submitBtn {
-    min-height: 52px;
-    font-size: 0.9375rem;
-    padding: 0.875rem 1.125rem;
-    text-align: center;
+  .primaryCta {
+    width: 100%;
+    justify-content: center;
+    min-height: 56px;
+    font-size: 1.0625rem;
+    border-radius: 14px;
   }
   .footer {
     padding: 1.25rem 1.25rem;
