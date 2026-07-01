@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react'
 import { fromHex } from 'viem'
 import { Client, IdentifierKind } from '@xmtp/browser-sdk'
 import type { Installation } from '@xmtp/browser-sdk'
-import { useConnectedWallet } from './useConnectedWallet'
+import type { ConnectedWallet } from './useConnectedWallet'
 
 export interface DeviceInstallation {
   id: string
@@ -21,8 +21,7 @@ export interface UseManageDevicesResult {
   revokeInstallation: (inst: DeviceInstallation) => Promise<void>
 }
 
-export function useManageDevices(xmtpClient: Client | null): UseManageDevicesResult {
-  const wallet = useConnectedWallet()
+export function useManageDevices(xmtpClient: Client | null, wallet: ConnectedWallet): UseManageDevicesResult {
   const [installations, setInstallations] = useState<DeviceInstallation[]>([])
   const [inboxId, setInboxId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)

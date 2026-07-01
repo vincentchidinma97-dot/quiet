@@ -99,7 +99,7 @@ function XmtpInitScreen({ message }: { message: string }) {
 
 export default function AppPage() {
   const router = useRouter()
-  const { ready, authenticated, user } = usePrivy()
+  const { ready, authenticated, user, logout } = usePrivy()
   const { isConnected: wcConnected } = useAccount()
   const wallet = useConnectedWallet()
   const { xmtpClient, isInitializing, error: xmtpError, xmtpLimitReached } = useXmtp()
@@ -111,7 +111,7 @@ export default function AppPage() {
     error: devicesError,
     fetchInstallations,
     revokeInstallation,
-  } = useManageDevices(xmtpClient)
+  } = useManageDevices(xmtpClient, wallet)
 
   // ── Manage Devices panel state
   const [showManageDevices, setShowManageDevices] = useState(false)
@@ -407,7 +407,20 @@ export default function AppPage() {
 
   async function handleLogout() {
     streamCleanupRef.current?.()
-    await wallet.disconnect()
+    try {
+      await logout()
+    } catch { /* ignore — Privy may already be logged out */ }
+    try {
+      await wallet.disconnect()
+    } catch { /* ignore */ }
+    // Clear session keys but keep theme preference
+    try {
+      const address = wallet.address?.toLowerCase()
+      if (address) localStorage.removeItem(`xmtp-key-${address}`)
+      localStorage.removeItem('quiet-destination')
+      localStorage.removeItem('quiet-passkey-prompted')
+      localStorage.removeItem('quiet-declined')
+    } catch { /* ignore */ }
     router.push('/')
   }
 

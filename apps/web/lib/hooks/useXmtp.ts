@@ -62,26 +62,53 @@ export function useXmtp(): UseXmtpResult {
           localStorage.setItem(storageKey, btoa(String.fromCharCode(...dbEncryptionKey)))
         }
 
-        const signer = {
-          type: 'EOA' as const,
-          getIdentifier: () => ({
-            identifier: address,
-            identifierKind: IdentifierKind.Ethereum,
-          }),
-          signMessage: async (message: string): Promise<Uint8Array> => {
-            console.log('[quiet/xmtp] signMessage — wallet will prompt')
-            const sig = await provider.request({
-              method: 'personal_sign',
-              params: [message, address],
-            }) as string
-            return fromHex(sig as `0x${string}`, 'bytes')
-          },
+        const identifier = { identifier: address, identifierKind: IdentifierKind.Ethereum }
+
+        // ── Strategy 1: load existing local installation from OPFS (no new slot) ──
+        // Client.build() succeeds only if this browser already has a registered
+        // XMTP identity in OPFS AND the dbEncryptionKey matches.
+        let client: Client | null = null
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          client = await Client.build(identifier, { env: 'dev', dbEncryptionKey } as any)
+          console.log('[quiet/xmtp] reusing existing installation, inboxId:', client.inboxId)
+        } catch {
+          // No local identity found or key mismatch — fall through to create
+          console.log('[quiet/xmtp] no existing local installation, registering new...')
         }
 
-        console.log('[quiet/xmtp] calling Client.create...')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const client = await Client.create(signer, { env: 'dev', dbEncryptionKey } as any)
-        console.log('[quiet/xmtp] ✓ ready, inboxId:', client.inboxId)
+        // ── Strategy 2: register a new installation ──
+        if (!client) {
+          const signer = {
+            type: 'EOA' as const,
+            getIdentifier: () => identifier,
+            signMessage: async (message: string): Promise<Uint8Array> => {
+              console.log('[quiet/xmtp] signMessage — wallet will prompt')
+              const sig = await provider.request({
+                method: 'personal_sign',
+                params: [message, address],
+              }) as string
+              return fromHex(sig as `0x${string}`, 'bytes')
+            },
+          }
+
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            client = await Client.create(signer, { env: 'dev', dbEncryptionKey } as any)
+            console.log('[quiet/xmtp] registered new installation, inboxId:', client.inboxId)
+          } catch (createErr: unknown) {
+            const createMsg = createErr instanceof Error ? createErr.message : String(createErr)
+            // If we failed because local state is corrupted rather than a limit error,
+            // surface a clearer log so it's easy to spot in the console.
+            const isCorruption = !createMsg.includes('10/10') &&
+              !createMsg.includes('installation limit') &&
+              !createMsg.includes('already registered')
+            if (isCorruption) {
+              console.warn('[quiet/xmtp] local installation corrupted, creating new — original error:', createMsg)
+            }
+            throw createErr
+          }
+        }
 
         await client.conversations.sync()
         console.log('[quiet/xmtp] ✓ initial sync complete')
