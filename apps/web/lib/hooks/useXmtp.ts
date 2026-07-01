@@ -9,6 +9,7 @@ interface UseXmtpResult {
   xmtpClient: Client | null
   isInitializing: boolean
   error: string | null
+  xmtpLimitReached: boolean
 }
 
 export function useXmtp(): UseXmtpResult {
@@ -16,6 +17,7 @@ export function useXmtp(): UseXmtpResult {
   const [xmtpClient, setXmtpClient] = useState<Client | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [xmtpLimitReached, setXmtpLimitReached] = useState(false)
   const initRef = useRef(false)
   const prevAddressRef = useRef<string | undefined>(undefined)
 
@@ -27,6 +29,7 @@ export function useXmtp(): UseXmtpResult {
         initRef.current = false
         setXmtpClient(null)
         setError(null)
+        setXmtpLimitReached(false)
       }
     }
   }, [wallet.address])
@@ -90,7 +93,10 @@ export function useXmtp(): UseXmtpResult {
           console.error('[quiet/xmtp] message:', err.message)
           if ('cause' in err) console.error('[quiet/xmtp] cause:', err.cause)
         }
-        setError(err instanceof Error ? err.message : 'failed to initialize messaging')
+        const msg = err instanceof Error ? err.message : 'failed to initialize messaging'
+        const isLimit = msg.includes('10/10') || msg.includes('installation limit') || msg.includes('already registered')
+        setXmtpLimitReached(isLimit)
+        setError(msg)
         initRef.current = false
       } finally {
         setIsInitializing(false)
@@ -100,5 +106,5 @@ export function useXmtp(): UseXmtpResult {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallet.isConnected, wallet.address, xmtpClient])
 
-  return { xmtpClient, isInitializing, error }
+  return { xmtpClient, isInitializing, error, xmtpLimitReached }
 }

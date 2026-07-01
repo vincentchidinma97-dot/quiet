@@ -100,7 +100,7 @@ export default function AppPage() {
   const { ready, authenticated, user } = usePrivy()
   const { isConnected: wcConnected } = useAccount()
   const wallet = useConnectedWallet()
-  const { xmtpClient, isInitializing, error: xmtpError } = useXmtp()
+  const { xmtpClient, isInitializing, error: xmtpError, xmtpLimitReached } = useXmtp()
 
   // Passkey management
   const { linkWithPasskey } = useLinkWithPasskey()
@@ -440,7 +440,6 @@ export default function AppPage() {
     )
   }
   if (isInitializing) return <XmtpInitScreen message="setting up your encrypted identity…" />
-  if (xmtpError) return <XmtpInitScreen message={`messaging unavailable: ${xmtpError}`} />
 
   // ── Derived values
   const selectedEntry = convEntries.find((c) => c.id === selectedConvId)
@@ -467,6 +466,30 @@ export default function AppPage() {
   }
 
   // ── Render helpers ────────────────────────────────────────────────────────
+
+  function renderXmtpUnavailable() {
+    return (
+      <div className={styles.xmtpUnavailable}>
+        <p className={styles.xmtpUnavailableMsg}>
+          {xmtpLimitReached ? (
+            <>
+              messaging unavailable — you&apos;ve reached the 10-device limit.{' '}
+              <button
+                className={styles.xmtpUnavailableLink}
+                onClick={() => { setDestination('settings'); setSettingsSection('security') }}
+                type="button"
+              >
+                revoke unused devices in Settings → Security
+              </button>
+              {' '}to restore messaging.
+            </>
+          ) : (
+            'messaging temporarily unavailable'
+          )}
+        </p>
+      </div>
+    )
+  }
 
   function renderConvList() {
     return (
@@ -932,7 +955,7 @@ export default function AppPage() {
               <div className={styles.sidebarHeader}>
                 <span className={styles.sidebarTitle}>inbox</span>
               </div>
-              {renderConvList()}
+              {xmtpError ? renderXmtpUnavailable() : renderConvList()}
             </>
           )}
 
@@ -1089,7 +1112,7 @@ export default function AppPage() {
                     quiet<span className={styles.wordmarkDot}>.</span>
                   </span>
                 </div>
-                {renderConvList()}
+                {xmtpError ? renderXmtpUnavailable() : renderConvList()}
               </div>
             )
           )}
