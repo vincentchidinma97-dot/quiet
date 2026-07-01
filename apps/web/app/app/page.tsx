@@ -13,6 +13,8 @@ import type { Token } from '@/lib/tokens'
 import { TOKENS } from '@/lib/tokens'
 import { useTokenBalances } from '@/lib/hooks/useTokenBalances'
 import { useXmtp } from '@/lib/hooks/useXmtp'
+import { useManageDevices } from '@/lib/hooks/useManageDevices'
+import type { DeviceInstallation } from '@/lib/hooks/useManageDevices'
 import {
   listConversations,
   getOrCreateConversation,
@@ -101,6 +103,22 @@ export default function AppPage() {
   const { isConnected: wcConnected } = useAccount()
   const wallet = useConnectedWallet()
   const { xmtpClient, isInitializing, error: xmtpError, xmtpLimitReached } = useXmtp()
+
+  const {
+    installations: deviceInstallations,
+    inboxId: deviceInboxId,
+    loading: devicesLoading,
+    error: devicesError,
+    fetchInstallations,
+    revokeInstallation,
+  } = useManageDevices(xmtpClient)
+
+  // ── Manage Devices panel state
+  const [showManageDevices, setShowManageDevices] = useState(false)
+  const [revokeTarget, setRevokeTarget] = useState<DeviceInstallation | null>(null)
+  const [revokeLoading, setRevokeLoading] = useState(false)
+  const [revokeError, setRevokeError] = useState<string | null>(null)
+  const [deviceToast, setDeviceToast] = useState<string | null>(null)
 
   // Passkey management
   const { linkWithPasskey } = useLinkWithPasskey()
@@ -415,6 +433,31 @@ export default function AppPage() {
     try { await linkWithPasskey() }
     catch (err) { setPasskeyRowError(err instanceof Error ? err.message : 'passkey setup failed') }
     finally { setPasskeyLinking(false) }
+  }
+
+  function showToast(msg: string) {
+    setDeviceToast(msg)
+    setTimeout(() => setDeviceToast(null), 3000)
+  }
+
+  function handleOpenManageDevices() {
+    setShowManageDevices(true)
+    fetchInstallations()
+  }
+
+  async function handleConfirmRevoke() {
+    if (!revokeTarget) return
+    setRevokeLoading(true)
+    setRevokeError(null)
+    try {
+      await revokeInstallation(revokeTarget)
+      setRevokeTarget(null)
+      showToast('Device revoked')
+    } catch (err) {
+      setRevokeError(err instanceof Error ? err.message : 'revocation failed')
+    } finally {
+      setRevokeLoading(false)
+    }
   }
 
   async function handleUnlinkPasskey() {
@@ -865,7 +908,10 @@ export default function AppPage() {
             </div>
           </div>
         )
-      case 'security':
+      case 'security': {
+        const instCount = deviceInstallations.length
+        const atLimit = instCount >= 10
+        const nearLimit = instCount >= 7
         return (
           <div className={styles.settingsSection}>
             <p className={styles.settingsSectionTitle}>security</p>
@@ -876,6 +922,82 @@ export default function AppPage() {
                 — no single point of failure
               </p>
             </div>
+
+            {/* ── Manage Devices ── */}
+            <p className={styles.manageDevicesLabel}>manage devices</p>
+            <p className={styles.manageDevicesSubtitle}>
+              each browser or device that signs into quiet. registers as an encrypted installation.
+              XMTP allows up to 10 per identity. revoke devices you no longer use.
+            </p>
+            {!showManageDevices ? (
+              <button
+                className={styles.manageDevicesOpenBtn}
+                onClick={handleOpenManageDevices}
+                type="button"
+              >
+                view installations
+              </button>
+            ) : (
+              <div className={styles.manageDevicesPanel}>
+                {devicesLoading && (
+                  <p className={styles.devicesLoading}>loading…</p>
+                )}
+                {devicesError && !devicesLoading && (
+                  <p className={styles.devicesError}>{devicesError}</p>
+                )}
+                {!devicesLoading && !devicesError && (
+                  <>
+                    {instCount > 0 && (
+                      <p className={nearLimit ? styles.deviceCountWarn : styles.deviceCount}>
+                        {instCount} of 10 installations active
+                      </p>
+                    )}
+                    {nearLimit && (
+                      <div className={styles.deviceWarningBanner}>
+                        {atLimit
+                          ? 'you have reached the 10-device limit. revoke at least one device to sign in on new browsers.'
+                          : `approaching the 10-device limit — you have ${10 - instCount} slot${10 - instCount === 1 ? '' : 's'} remaining.`}
+                      </div>
+                    )}
+                    <div className={styles.deviceList}>
+                      {deviceInstallations.map((inst) => (
+                        <div key={inst.id} className={styles.deviceRow}>
+                          <span className={styles.deviceId}>
+                            {inst.id.slice(0, 8)}…{inst.id.slice(-4)}
+                          </span>
+                          {inst.isCurrent && (
+                            <span className={styles.deviceCurrentLabel}>this device</span>
+                          )}
+                          {!inst.isCurrent && (
+                            <button
+                              className={styles.deviceRevokeBtn}
+                              onClick={() => { setRevokeTarget(inst); setRevokeError(null) }}
+                              type="button"
+                            >
+                              revoke
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {atLimit && instCount > 0 && (
+                      <p className={styles.deviceSuccessHint}>
+                        after revoking a device, refresh this page to restore messaging.
+                      </p>
+                    )}
+                    <button
+                      className={styles.devicesRefreshBtn}
+                      onClick={fetchInstallations}
+                      type="button"
+                      disabled={devicesLoading}
+                    >
+                      refresh
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             <button
               className={styles.logoutBtn}
               onClick={async () => {
@@ -887,6 +1009,7 @@ export default function AppPage() {
             </button>
           </div>
         )
+      }
       case 'about':
         return (
           <div className={styles.settingsSection}>
@@ -1223,6 +1346,48 @@ export default function AppPage() {
       )}
       {showPasskeyPrompt && (
         <PasskeySetupModal onClose={handlePasskeyPromptClose} />
+      )}
+
+      {/* ── Revoke Device Modal ── */}
+      {revokeTarget && (
+        <div className={styles.revokeOverlay} onClick={() => { if (!revokeLoading) { setRevokeTarget(null); setRevokeError(null) } }}>
+          <div className={styles.revokeModal} onClick={(e) => e.stopPropagation()}>
+            <p className={styles.revokeModalTitle}>revoke this device?</p>
+            <p className={styles.revokeModalBody}>
+              this permanently removes that device&apos;s access to your encrypted messages.
+              this cannot be undone.
+            </p>
+            <p className={styles.revokeModalDevice}>
+              {revokeTarget.id.slice(0, 8)}…{revokeTarget.id.slice(-4)}
+            </p>
+            {revokeError && (
+              <p className={styles.revokeModalError}>{revokeError}</p>
+            )}
+            <div className={styles.revokeModalActions}>
+              <button
+                className={styles.revokeModalCancel}
+                onClick={() => { setRevokeTarget(null); setRevokeError(null) }}
+                type="button"
+                disabled={revokeLoading}
+              >
+                cancel
+              </button>
+              <button
+                className={styles.revokeModalConfirm}
+                onClick={handleConfirmRevoke}
+                type="button"
+                disabled={revokeLoading}
+              >
+                {revokeLoading ? 'revoking…' : 'revoke device'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toast ── */}
+      {deviceToast && (
+        <div className={styles.deviceToast}>{deviceToast}</div>
       )}
     </>
   )
